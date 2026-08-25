@@ -1,433 +1,21 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Plus, Minus, RotateCcw, Eye, Divide, X as XIcon, ArrowLeftRight, Lightbulb,
-  Check, Undo2, Maximize2, Presentation, Trash2, Link2, Link2Off, Play,
+  Check, Undo2, Redo2, Maximize2, Presentation, Trash2, Link2, Link2Off, Play,
   Dices, Printer, GraduationCap, Scissors, Copy, AlertTriangle, ChevronDown, ChevronUp, Link as LinkIcon,
 } from "lucide-react";
 
-/* ================= Tokens ================= */
-const C = {
-  paper: "#EDEFE8", grid: "#D6DCD0", ink: "#22312B", ink2: "#5A6B62",
-  brass: "#A8823C", brassDark: "#7A5B22", wood: "#8C7350",
-  x: "#2C5F8A", xDark: "#1E4363", y: "#6B4E8C", yDark: "#4C3765",
-  ball: "#E8E2D2", ballEdge: "#B9AE93", neg: "#B0453A", negDark: "#82302A", ok: "#3E7A56",
-  sack: "#8A6A3C", sackDark: "#5F4726", iron: "#7C8489", ironDark: "#565C60",
-};
-const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-const SERIF = "Iowan Old Style, Palatino Linotype, Georgia, serif";
-
-/* ================= Brüche ================= */
-const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) { const t = b; b = a % b; a = t; } return a || 1; };
-const lcm = (a, b) => (a * b) / gcd(a, b);
-const F = (n, d = 1) => { if (d === 0) return { n: 0, d: 1 }; if (d < 0) { n = -n; d = -d; } const k = gcd(n, d); return { n: n / k, d: d / k }; };
-const fAdd = (a, b) => F(a.n * b.d + b.n * a.d, a.d * b.d);
-const fSub = (a, b) => F(a.n * b.d - b.n * a.d, a.d * b.d);
-const fMul = (a, b) => F(a.n * b.n, a.d * b.d);
-const fDiv = (a, b) => (b.n === 0 ? F(0) : F(a.n * b.d, a.d * b.n));
-const fVal = (a) => a.n / a.d;
-const fZero = (a) => a.n === 0;
-const fAbs = (a) => F(Math.abs(a.n), a.d);
-const fStr = (a) => (a.d === 1 ? String(a.n) : `${a.n}/${a.d}`);
-const isInt = (a) => a.d === 1;
-
-/* ================= Terme ================= */
-const KIND = ["k", "x", "y"];
-const P = (x = 0, y = 0, k = 0) => ({ x: F(x), y: F(y), k: F(k) });
-const panAdd = (p, q) => ({ x: fAdd(p.x, q.x), y: fAdd(p.y, q.y), k: fAdd(p.k, q.k) });
-const panScale = (p, f) => ({ x: fMul(p.x, f), y: fMul(p.y, f), k: fMul(p.k, f) });
-const panVal = (p, xv, yv) => fVal(p.x) * xv + fVal(p.y) * yv + fVal(p.k);
-const panEmpty = (p) => KIND.every((k) => fZero(p[k]));
-const SYM = { x: "x", y: "y" };
-
-function termParts(p, sym = SYM) {
-  const parts = [];
-  const push = (c, kind, s) => {
-    if (fZero(c)) return;
-    const a = fStr(fAbs(c));
-    parts.push({ kind, neg: c.n < 0, s: s ? (a === "1" ? s : a + s) : a });
-  };
-  push(p.x, "x", sym.x); push(p.y, "y", sym.y); push(p.k, "k", "");
-  return parts;
-}
-function termStr(p, sym = SYM) {
-  const parts = termParts(p, sym);
-  if (!parts.length) return "0";
-  return parts.map((t, i) => (i === 0 ? (t.neg ? "−" : "") + t.s : (t.neg ? " − " : " + ") + t.s)).join("");
-}
-const eqOf = (L, R, sym = SYM) => `${termStr(L, sym)} = ${termStr(R, sym)}`;
-
-function noteStr(n, sym = SYM) {
-  if (!n) return "";
-  if (n.text) return n.text;
-  const s = n.kind === "k" ? "" : sym[n.kind];
-  if (n.op === "add") { const a = Math.abs(n.n); return `${n.n < 0 ? "−" : "+"} ${a === 1 && s ? s : a + s}`; }
-  if (n.op === "mul") return `· ${n.n}`;
-  if (n.op === "div") return `: ${n.n}`;
-  if (n.op === "swap") return "Seiten tauschen";
-  if (n.op === "one") return `nur ${n.side === "L" ? "links" : "rechts"} verändert`;
-  return "";
-}
-
-/* ================= Parser ================= */
-function numFrac(s) {
-  if (!s.includes(".")) return F(parseInt(s, 10));
-  const [a, b = ""] = s.split(".");
-  return F(parseInt((a || "0") + b, 10), Math.pow(10, b.length));
-}
-function tokenize(src) {
-  const s = src.replace(/[−–—]/g, "-").replace(/[·×]/g, "*").replace(/:/g, "/").replace(/,/g, ".").replace(/\s+/g, "");
-  const t = []; let i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (/[0-9.]/.test(c)) { let j = i; while (j < s.length && /[0-9.]/.test(s[j])) j++; t.push({ t: "num", v: s.slice(i, j) }); i = j; }
-    else if (/[xyXY?]/.test(c)) { t.push({ t: "var", v: c === "?" ? "x" : c.toLowerCase() }); i++; }
-    else if ("+-*/()".includes(c)) { t.push({ t: c }); i++; }
-    else throw new Error(`Das Zeichen „${c}" kenne ich nicht.`);
-  }
-  return t;
-}
-const linConst = (p) => fZero(p.x) && fZero(p.y);
-const linMul = (a, b) => {
-  if (linConst(a)) return panScale(b, a.k);
-  if (linConst(b)) return panScale(a, b.k);
-  throw new Error("Nur lineare Gleichungen: x·x oder x·y geht nicht.");
-};
-const linDiv = (a, b) => {
-  if (!linConst(b) || fZero(b.k)) throw new Error("Teilen geht nur durch eine Zahl außer null.");
-  return panScale(a, fDiv(F(1), b.k));
-};
-function parseExpr(tk, st) {
-  let v = parseTerm(tk, st);
-  while (st.i < tk.length && (tk[st.i].t === "+" || tk[st.i].t === "-")) {
-    const op = tk[st.i++].t, r = parseTerm(tk, st);
-    v = op === "+" ? panAdd(v, r) : panAdd(v, panScale(r, F(-1)));
-  }
-  return v;
-}
-function parseTerm(tk, st) {
-  let v = parseFactor(tk, st);
-  while (st.i < tk.length) {
-    const c = tk[st.i];
-    if (c.t === "*" || c.t === "/") { st.i++; const r = parseFactor(tk, st); v = c.t === "*" ? linMul(v, r) : linDiv(v, r); }
-    else if (c.t === "num" || c.t === "var" || c.t === "(") v = linMul(v, parseFactor(tk, st));
-    else break;
-  }
-  return v;
-}
-function parseFactor(tk, st) {
-  if (st.i >= tk.length) throw new Error("Die Gleichung hört mitten im Term auf.");
-  const c = tk[st.i];
-  if (c.t === "-") { st.i++; return panScale(parseFactor(tk, st), F(-1)); }
-  if (c.t === "+") { st.i++; return parseFactor(tk, st); }
-  if (c.t === "num") { st.i++; return { x: F(0), y: F(0), k: numFrac(c.v) }; }
-  if (c.t === "var") { st.i++; return c.v === "x" ? P(1, 0, 0) : P(0, 1, 0); }
-  if (c.t === "(") { st.i++; const v = parseExpr(tk, st); if (!tk[st.i] || tk[st.i].t !== ")") throw new Error("Da fehlt eine schließende Klammer."); st.i++; return v; }
-  throw new Error("Unerwartetes Zeichen in der Gleichung.");
-}
-function parseEquation(str) {
-  const parts = String(str).split("=");
-  if (parts.length !== 2) throw new Error("Die Eingabe braucht genau ein Gleichheitszeichen.");
-  if (!parts[0].trim() || !parts[1].trim()) throw new Error("Auf beiden Seiten muss ein Term stehen.");
-  const side = (s) => { const tk = tokenize(s), st = { i: 0 }; const v = parseExpr(tk, st); if (st.i < tk.length) throw new Error("Der Term lässt sich nicht ganz lesen."); return v; };
-  return { L: side(parts[0]), R: side(parts[1]) };
-}
-
-/* ================= Waagentauglichkeit ================= */
-const representable = (L, R) => [L, R].every((p) => KIND.every((k) => isInt(p[k]) && fVal(p[k]) >= 0));
-function repairSteps(L, R) {
-  const steps = []; let d = 1;
-  [L, R].forEach((p) => KIND.forEach((k) => { d = lcm(d, p[k].d); }));
-  if (d > 1) { L = panScale(L, F(d)); R = panScale(R, F(d)); steps.push({ op: "mul", n: d }); }
-  KIND.forEach((k) => {
-    const m = Math.min(fVal(L[k]), fVal(R[k]));
-    if (m < 0) {
-      const dd = { x: F(0), y: F(0), k: F(0) }; dd[k] = F(-m);
-      L = panAdd(L, dd); R = panAdd(R, dd); steps.push({ op: "add", kind: k, n: -m });
-    }
-  });
-  return { L, R, steps };
-}
-
-/* Welche Blockgewichte bringen diese Waage ins Gleichgewicht?
-   a·x + b·y = c  — löst nach der beteiligten Variablen auf. */
-function levelValues(L, R, xFallback = 1, yFallback = 1) {
-  const a = fSub(L.x, R.x), b = fSub(L.y, R.y), c = fSub(R.k, L.k);
-  if (!fZero(a) && fZero(b)) { const xF = fDiv(c, a); return { x: fVal(xF), y: yFallback, xF, ok: true }; }
-  if (!fZero(a)) { const x = (fVal(c) - fVal(b) * yFallback) / fVal(a); return { x, y: yFallback, ok: true }; }
-  if (!fZero(b)) { const yF = fDiv(c, b); return { x: xFallback, y: fVal(yF), yF, ok: true }; }
-  return { x: xFallback, y: yFallback, ok: fZero(c) };
-}
-
-/* ================= Sachkontexte ================= */
-const CONTEXTS = {
-  algebra: {
-    name: "Algebra", sym: { x: "x", y: "y" }, unit: "Kugel", xName: "x-Block", yName: "y-Block",
-    story: "Eine Kugel wiegt 1. Wie schwer ist ein Block?",
-  },
-  markt: {
-    name: "Marktstand", sym: { x: "?", y: "◇" }, unit: "Kilogewicht", xName: "Mehlsack", yName: "Zuckersack",
-    story: "Jedes Gewicht wiegt 1 kg, jeder Sack gleich viel. Wie schwer ist ein Sack?",
-  },
-  schachtel: {
-    name: "Streichhölzer", sym: { x: "?", y: "◇" }, unit: "Streichholz", xName: "Schachtel", yName: "Röhrchen",
-    story: "In jeder Schachtel liegen gleich viele Hölzer. Wie viele sind es?",
-  },
-};
-
-/* ================= Aufgaben & Generator ================= */
-const A1 = [
-  { name: "3x + 2 = x + 8", L: P(3, 0, 2), R: P(1, 0, 8) },
-  { name: "2x + 3 = 11", L: P(2, 0, 3), R: P(0, 0, 11) },
-  { name: "4x + 1 = 2x + 9", L: P(4, 0, 1), R: P(2, 0, 9) },
-  { name: "5 + 2x = 3x + 1", L: P(2, 0, 5), R: P(3, 0, 1) },
-  { name: "6x = 2x + 12", L: P(6, 0, 0), R: P(2, 0, 12) },
-];
-const A2 = [
-  { name: "x + y = 8  /  2x + y = 11", A: { L: P(1, 1, 0), R: P(0, 0, 8) }, B: { L: P(2, 1, 0), R: P(0, 0, 11) } },
-  { name: "x = y + 2  /  x + y = 10", A: { L: P(1, 0, 0), R: P(0, 1, 2) }, B: { L: P(1, 1, 0), R: P(0, 0, 10) } },
-  { name: "2x + y = 12  /  x + 3y = 16", A: { L: P(2, 1, 0), R: P(0, 0, 12) }, B: { L: P(1, 3, 0), R: P(0, 0, 16) } },
-];
-const LEVELS = [
-  { id: 1, name: "Stufe 1 · wegnehmen", hint: "Kugeln wegnehmen, dann Blöcke aufteilen." },
-  { id: 2, name: "Stufe 2 · Blöcke auf beiden Seiten", hint: "Erst Blöcke abgleichen, dann Kugeln." },
-  { id: 3, name: "Stufe 3 · geht nicht glatt auf", hint: "Am Ende bleibt ein Bruchteil – teile die Kugeln in gleiche Haufen." },
-  { id: 4, name: "Stufe 4 · Antikugeln", hint: "Hier reichen die Kugeln nicht: rote Antikugeln übernehmen." },
-  { id: 5, name: "Stufe 5 · zwei Waagen", hint: "Einsetzen, gleichsetzen oder zusammenschütten." },
-];
-const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
-function genTask(level) {
-  if (level === 5) {
-    for (let t = 0; t < 200; t++) {
-      const x = ri(1, 6), y = ri(1, 6);
-      const a1 = ri(1, 3), b1 = ri(1, 3), a2 = ri(1, 3), b2 = ri(1, 3);
-      if (a1 * b2 - a2 * b1 === 0) continue;
-      return { mode: "lgs", scales: [{ L: P(a1, b1, 0), R: P(0, 0, a1 * x + b1 * y) }, { L: P(a2, b2, 0), R: P(0, 0, a2 * x + b2 * y) }] };
-    }
-  }
-  if (level === 1) { const a = ri(2, 4), x = ri(1, 6), b = ri(1, 8); return { mode: "einzeln", scales: [{ L: P(a, 0, b), R: P(0, 0, a * x + b) }] }; }
-  if (level === 2) {
-    const x = ri(1, 6), c = ri(1, 3), a = c + ri(1, 3), d = ri(1, 6), b = ri(0, 6);
-    return { mode: "einzeln", scales: [{ L: P(a, 0, b), R: P(c, 0, (a - c) * x + b) }] };
-  }
-  if (level === 3) {
-    const c = ri(0, 1), a = c + ri(2, 4), b = ri(0, 5);
-    let rest = ri(1, 11);
-    while (rest % (a - c) === 0) rest++;
-    return { mode: "einzeln", scales: [{ L: P(a, 0, b), R: P(c, 0, b + rest) }] };
-  }
-  return genNeg();
-}
-function genNeg() {
-  const x = ri(1, 5), a = ri(2, 4), b = ri(1, 6);
-  return { mode: "einzeln", scales: [{ L: P(a, 0, a * x + b), R: P(0, 0, b) }] };
-}
-
-let uid = 0;
-const mkScale = (label, L, R) => ({ id: ++uid, label, L, R, prot: [{ L, R, note: null }] });
-const withStep = (s, L, R, note, bad) => {
-  const prot = s.prot.slice();
-  prot[prot.length - 1] = { ...prot[prot.length - 1], note, bad };
-  return { ...s, L, R, prot: [...prot, { L, R, note: null }] };
-};
-
-/* ================= Spielsteine ================= */
-function look(kind, neg, ctx) {
-  if (neg) return { shape: "round", bg: `radial-gradient(circle at 32% 28%, #d98a80, ${C.neg} 62%, ${C.negDark})`, border: C.negDark, fg: "#fff", label: kind === "k" ? "−1" : "−" + ctx.sym[kind] };
-  if (kind === "k") {
-    if (ctx === CONTEXTS.markt) return { shape: "sq", bg: `linear-gradient(160deg, ${C.iron}, ${C.ironDark})`, border: C.ironDark, fg: "#fff", label: "1kg", small: true };
-    if (ctx === CONTEXTS.schachtel) return { shape: "stick", bg: "#D9B36C", border: "#8A6A2E", fg: C.ink, label: "" };
-    return { shape: "round", bg: `radial-gradient(circle at 32% 28%, #fbf8ef, ${C.ball} 62%, #cfc5ab)`, border: C.ballEdge, fg: C.ink, label: "" };
-  }
-  const base = kind === "x" ? (ctx === CONTEXTS.algebra ? C.x : C.sack) : (ctx === CONTEXTS.algebra ? C.y : C.yDark);
-  const dark = kind === "x" ? (ctx === CONTEXTS.algebra ? C.xDark : C.sackDark) : C.yDark;
-  return { shape: "sq", bg: `linear-gradient(160deg, ${base}, ${dark})`, border: dark, fg: "#fff", label: ctx.sym[kind] };
-}
-function Piece({ kind, neg, ctx, z = 1, label, onPointerDown, onHover, ghost, title, deco = {}, placeholder }) {
-  const L = look(kind, neg, ctx);
-  const w = (kind === "k" ? (L.shape === "stick" ? 12 : 26) : 30) * z;
-  const h = (L.shape === "stick" ? 30 : kind === "k" ? 26 : 30) * z;
-  const ring = deco.mark ? `0 0 0 3px rgba(168,130,60,.60)` : deco.glow ? `0 0 0 3px rgba(44,95,138,.55)` : null;
-  if (placeholder) return (
-    <div style={{
-      width: w, height: h, borderRadius: L.shape === "round" ? "50%" : 5 * z,
-      border: `2px dashed ${C.brassDark}`, opacity: .7, background: "rgba(168,130,60,.12)",
-    }} />
-  );
-  return (
-    <button data-piece={kind} data-neg={neg ? "1" : "0"}
-      onPointerDown={onPointerDown}
-      onPointerEnter={onHover ? () => onHover(kind) : undefined}
-      onPointerLeave={onHover ? () => onHover(null) : undefined}
-      title={title} style={{
-        width: w, height: h, padding: 0, touchAction: "none", userSelect: "none",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        borderRadius: L.shape === "round" ? "50%" : 5 * z,
-        background: L.bg, border: `1.5px solid ${L.border}`, color: L.fg,
-        fontSize: (L.small || label ? 10 : 14) * z, fontWeight: 700,
-        fontFamily: kind === "k" ? MONO : SERIF, fontStyle: kind === "k" ? "normal" : "italic",
-        boxShadow: [ring, ghost ? "0 6px 14px rgba(0,0,0,.35)" : "0 1px 2px rgba(0,0,0,.28)"].filter(Boolean).join(", "),
-        cursor: onPointerDown ? "grab" : "default",
-        opacity: deco.dim ? 0.3 : 1,
-        transform: ghost ? "scale(1.15)" : deco.mark || deco.glow ? "translateY(-3px)" : "none",
-        transition: "transform .18s ease, box-shadow .18s ease, opacity .18s ease",
-        animation: deco.enter ? "waageDrop .42s cubic-bezier(.34,1.3,.5,1)" : deco.mark ? "waagePulse 1.1s ease-in-out infinite" : "none",
-      }}>{label !== undefined ? label : L.label}</button>
-  );
-}
-function Bundle({ kind, neg, ctx, z = 1, onPointerDown, title }) {
-  const L = look(kind, neg, ctx);
-  const w = (kind === "k" ? 26 : 30) * z;
-  return (
-    <button data-piece={kind} data-neg={neg ? "1" : "0"} data-bundle="10" onPointerDown={onPointerDown} title={title}
-      style={{
-        position: "relative", width: w + 8 * z, height: (kind === "k" ? 26 : 30) * z + 6 * z,
-        padding: 0, background: "none", border: "none", touchAction: "none", cursor: onPointerDown ? "grab" : "default",
-      }}>
-      {[0, 1, 2].map((i) => (
-        <span key={i} style={{
-          position: "absolute", left: i * 3 * z, top: (2 - i) * 3 * z, width: w, height: (kind === "k" ? 26 : 30) * z,
-          borderRadius: L.shape === "round" ? "50%" : 5 * z, background: L.bg,
-          border: `1.5px solid ${L.border}`, boxShadow: "0 1px 2px rgba(0,0,0,.25)",
-        }} />
-      ))}
-      <span style={{
-        position: "absolute", right: -2 * z, bottom: -2 * z, background: C.ink, color: C.paper,
-        fontFamily: MONO, fontSize: 9 * z, fontWeight: 700, borderRadius: 8, padding: `${1 * z}px ${4 * z}px`,
-      }}>10</span>
-    </button>
-  );
-}
-function pieces(count, kind, ctx, z, onDown, opts = {}) {
-  const out = []; const v = fVal(count);
-  if (v === 0) return out;
-  const neg = v < 0, abs = fAbs(count);
-  const down = onDown ? (e) => onDown(e, neg ? -1 : 1, 1) : undefined;
-  if (!isInt(abs)) return [<Piece key={kind + "f"} kind={kind} neg={neg} ctx={ctx} z={z} onHover={opts.onHover}
-    deco={{ glow: opts.glow }} label={fStr(abs) + (kind === "k" ? "" : ctx.sym[kind])} onPointerDown={down} />];
-  const n = abs.n;
-  if (n > 14) {
-    const bundles = Math.floor(n / 10), rest = n % 10;
-    const downB = onDown ? (e) => onDown(e, neg ? -1 : 1, 10) : undefined;
-    for (let b = 0; b < bundles; b++) {
-      out.push(<Bundle key={kind + "b" + b} kind={kind} neg={neg} ctx={ctx} z={z} onPointerDown={downB}
-        title={`Zehnerbündel – nimmt 10 auf einmal weg`} />);
-    }
-    for (let i = 0; i < rest; i++) {
-      out.push(<Piece key={kind + "r" + i} kind={kind} neg={neg} ctx={ctx} z={z} onPointerDown={down}
-        onHover={opts.onHover} deco={{ glow: opts.glow }} />);
-    }
-    return out;
-  }
-  const shown = n;
-  for (let i = 0; i < shown; i++) {
-    const last = i === shown - 1;
-    out.push(<Piece key={kind + i} kind={kind} neg={neg} ctx={ctx} z={z} onPointerDown={down} onHover={opts.onHover}
-      deco={{
-        dim: opts.dimLast && last, mark: opts.markLast && last, glow: opts.glow,
-        enter: opts.enterFrom != null && i >= opts.enterFrom,
-      }} />);
-  }
-  return out;
-}
-
-/* ================= Waage ================= */
-function Waage({ scale, xv, yv, z, ctx, active, onFocus, onPieceDown, hot, stage, drag, coupled, hl, setHl, enter, broken, phase, hint }) {
-  const arm = 132 * z, beamY = 232 * z, cx = 200 * z, panW = 176 * z;
-  const staged = stage && stage.scaleId === scale.id;
-  const diff = panVal(scale.L, xv, yv) - panVal(scale.R, xv, yv);
-  const angle = staged ? 0 : Math.max(-11, Math.min(11, diff * 2.2));
-  const a = (angle * Math.PI) / 180;
-  const dx = Math.cos(a) * arm, dy = Math.sin(a) * arm;
-  const balanced = Math.abs(diff) < 1e-9;
-  const mine = drag && drag.from !== "tray" && drag.from.scaleId === scale.id;
-
-  const renderGroups = (p) => {
-    const n = stage.n;
-    const part = stage.type === "div" ? panScale(p, F(1, n)) : p;
-    return (
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center" }}>
-        {Array.from({ length: n }).map((_, i) => (
-          <div key={i} style={{
-            border: `1.5px dashed ${i === 0 && stage.type === "div" ? C.ok : C.brassDark}`,
-            borderRadius: 6, padding: 3, display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center",
-            background: i === 0 && stage.type === "div" ? "rgba(62,122,86,.12)" : "transparent",
-          }}>
-            {KIND.flatMap((k) => pieces(part[k], k, ctx, z * 0.8, null))}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderPan = (side) => {
-    const p = scale[side];
-    const isHot = hot === `pan:${scale.id}:${side}`;
-    const fromHere = mine && drag.from.side === side;
-    const partnerHere = mine && coupled && drag.from.side !== side;
-    const trayGhost = drag && drag.from === "tray" && (coupled || isHot);
-    return (
-      <div data-drop={`pan:${scale.id}:${side}`} style={{
-        position: "absolute", left: cx + (side === "L" ? -dx : dx), top: beamY + (side === "L" ? dy : -dy),
-        transform: "translate(-50%,-100%)", width: panW,
-        transition: "left .5s cubic-bezier(.34,1.25,.5,1), top .5s cubic-bezier(.34,1.25,.5,1)",
-      }}>
-        <div style={{
-          display: "flex", flexWrap: "wrap", gap: 4 * z, justifyContent: "center", alignItems: "flex-end",
-          minHeight: 42 * z, padding: `${6 * z}px ${6 * z}px ${8 * z}px`,
-          borderBottom: `${4 * z}px solid ${C.brassDark}`, borderRadius: "3px 3px 6px 6px",
-          background: isHot ? "rgba(168,130,60,.30)" : "rgba(168,130,60,.10)",
-          outline: isHot ? `2px dashed ${C.brassDark}` : "none",
-          transition: "background .2s ease",
-        }}>
-          {staged ? renderGroups(p)
-            : panEmpty(p) && !trayGhost ? <span style={{ fontFamily: MONO, fontSize: 12 * z, color: C.ink2 }}>leer</span>
-              : KIND.flatMap((k) => pieces(p[k], k, ctx, z, (e, sign, menge) => onPieceDown(e, k, { scaleId: scale.id, side, sign, menge }), {
-                dimLast: fromHere && drag.kind === k,
-                markLast: partnerHere && drag.kind === k,
-                glow: hl && hl.scaleId === scale.id && hl.side === side && hl.kind === k,
-                enterFrom: enter && enter[`${scale.id}:${side}:${k}`],
-                onHover: (kk) => setHl(kk ? { scaleId: scale.id, side, kind: kk } : null),
-              }))}
-          {trayGhost && !staged && <Piece placeholder kind={drag.kind} neg={drag.sign < 0} ctx={ctx} z={z} />}
-        </div>
-        <div style={{ textAlign: "center", fontFamily: MONO, fontSize: 13 * z, marginTop: 4 * z }}>{termStr(p, ctx.sym)}</div>
-      </div>
-    );
-  };
-
-  return (
-    <div onPointerDown={onFocus} style={{
-      position: "relative", width: 400 * z, height: 318 * z, margin: "0 auto",
-      outline: active ? `2px solid ${C.brass}` : "2px solid transparent", borderRadius: 10,
-    }}>
-      {renderPan("L")}{renderPan("R")}
-      <div style={{
-        position: "absolute", left: cx - arm, top: beamY - 5 * z, width: arm * 2, height: 10 * z,
-        background: `linear-gradient(180deg, ${C.brass}, ${C.brassDark})`, borderRadius: 5 * z,
-        transform: `rotate(${angle}deg)`, transformOrigin: "50% 50%",
-        transition: "transform .5s cubic-bezier(.34,1.45,.5,1)",
-        boxShadow: "0 1px 3px rgba(0,0,0,.3)",
-      }} />
-      <div style={{ position: "absolute", left: cx - 6 * z, top: beamY - 12 * z, width: 12 * z, height: 12 * z, borderRadius: "50%", background: C.brassDark, border: `2px solid ${C.brass}` }} />
-      <div style={{ position: "absolute", left: cx - 5 * z, top: beamY, width: 10 * z, height: 40 * z, background: C.wood }} />
-      <div style={{ position: "absolute", left: cx - 46 * z, top: beamY + 38 * z, width: 92 * z, height: 10 * z, borderRadius: 4, background: C.wood }} />
-      <div style={{
-        position: "absolute", left: cx - 110 * z, top: beamY + 52 * z, width: 220 * z, textAlign: "center",
-        fontFamily: MONO, fontSize: 11 * z, color: staged ? C.brassDark : broken ? C.neg : balanced ? C.ok : C.neg,
-      }}>{staged ? (stage.type === "div" ? `in ${stage.n} gleiche Haufen geteilt` : `${stage.n}-mal nebeneinander`)
-        : broken ? "nicht mehr äquivalent zur Aufgabe"
-          : hint ? hint
-            : balanced ? "im Gleichgewicht" : diff > 0 ? "links schwerer" : "rechts schwerer"}</div>
-      <div style={{
-        position: "absolute", left: cx - 110 * z, top: beamY + 68 * z, width: 220 * z, textAlign: "center",
-        fontFamily: MONO, fontSize: 14 * z, fontWeight: 700, color: C.ink,
-      }}>{eqOf(scale.L, scale.R, ctx.sym)}</div>
-      <div style={{ position: "absolute", left: 0, top: 0, fontFamily: SERIF, fontSize: 20 * z, fontWeight: 700, color: C.brassDark }}>
-        ({scale.label}){phase === "bauen" && <span style={{ fontFamily: MONO, fontSize: 11 * z, color: C.ink2, paddingLeft: 6 }}>Aufbau</span>}
-      </div>
-    </div>
-  );
-}
+import { C, MONO, SERIF } from "./lib/tokens.js";
+import {
+  F, fAdd, fSub, fMul, fDiv, fVal, fZero, fAbs, fStr, isInt,
+  KIND, P, panAdd, panScale, panVal, panEmpty, termParts, termStr, eqOf, noteStr,
+} from "./lib/fraction.js";
+import { parseEquation } from "./lib/parser.js";
+import { representable, repairSteps, levelValues, mkScale, withStep, resetUid } from "./lib/model.js";
+import { MELDUNGEN, CONTEXTS, sachtext } from "./lib/texts.js";
+import { A1, A2, LEVELS, genTask, genNeg } from "./lib/tasks.js";
+import { Piece } from "./components/Piece.jsx";
+import { Waage } from "./components/Waage.jsx";
 
 /* ================= App ================= */
 export default function WaagemodellApp() {
@@ -444,10 +32,12 @@ export default function WaagemodellApp() {
   const [xv, setXv] = useState(1);
   const [yv, setYv] = useState(1);
   const [edit, setEdit] = useState(false);
-  const [amount, setAmount] = useState(1);
+  const [amount, setAmount] = useState("1");
   const [past, setPast] = useState([]);
+  const [future, setFuture] = useState([]);
   const [presenting, setPresenting] = useState(false);
   const [compact, setCompact] = useState(true);
+  const [ansicht, setAnsicht] = useState("beides");
   const [eq1, setEq1] = useState("3x + 2 = x + 8");
   const [eq2, setEq2] = useState("2x + y = 12");
   const [pending, setPending] = useState(null);
@@ -457,6 +47,11 @@ export default function WaagemodellApp() {
   const [guessY, setGuessY] = useState("");
   const [log, setLog] = useState([]);
   const [showTeacher, setShowTeacher] = useState(false);
+  const [hintStyle, setHintStyle] = useState("frage");
+  const [activeSide, setActiveSide] = useState("L");
+  const [kalkuel, setKalkuel] = useState(false);
+  const [ziel, setZiel] = useState("");
+  const [zeigeLoesung, setZeigeLoesung] = useState(false);
   const [sheet, setSheet] = useState(null);
   const [share, setShare] = useState(null);
   const [msg, setMsg] = useState({ t: "Zieh die Teile mit Maus oder Finger. Bei gekoppeltem Ziehen passiert dasselbe auf beiden Waagschalen.", ok: true });
@@ -469,6 +64,8 @@ export default function WaagemodellApp() {
   const flyTimers = useRef([]);
   useEffect(() => () => { clearTimeout(enterTimer.current); flyTimers.current.forEach(clearTimeout); }, []);
   const rootRef = useRef(null);
+  const startSuche = useRef(typeof window !== "undefined" ? window.location.search : "");
+  const wiederhergestellt = useRef(false);
 
   const ctx = CONTEXTS[ctxKey];
   const active = scales.find((s) => s.id === activeId) || scales[0];
@@ -486,19 +83,39 @@ export default function WaagemodellApp() {
   const landscape = vp.w >= vp.h;
   const twoUp = scales.length > 1;
   const bare = presenting && compact;
+  const zeigeWaage = !presenting || ansicht !== "protokoll";
+  const zeigeProt = !presenting || ansicht !== "waage";
+  const alleinstehend = presenting && ansicht !== "beides";
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const z = useMemo(() => {
-    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     if (!presenting) return clamp((vp.w - 40) / 410, 0.62, 1);
     const cols = twoUp && landscape ? 2 : 1;
-    const paneW = (landscape ? vp.w * 0.58 : vp.w) - 60;
+    const anteil = ansicht === "waage" ? 1 : 0.58;
+    const paneW = (landscape ? vp.w * anteil : vp.w) - 60;
     const paneH = (landscape ? vp.h - (bare ? 90 : 170) : vp.h * (twoUp ? 0.30 : 0.52) + (bare ? 60 : 0)) - 20;
-    return clamp(Math.min(paneW / (cols * 410), paneH / 325), 0.6, 2.4);
-  }, [presenting, vp, landscape, twoUp, bare]);
+    return clamp(Math.min(paneW / (cols * 410), paneH / 325), 0.6, 2.6);
+  }, [presenting, vp, landscape, twoUp, bare, ansicht]);
+  /* Eigener Faktor für die Schriftgröße im Protokoll */
+  const zP = useMemo(() => {
+    if (!presenting) return 1;
+    if (ansicht !== "protokoll") return z;
+    return clamp(Math.min(vp.w / 640, vp.h / 460), 1, 2.8);
+  }, [presenting, ansicht, z, vp]);
 
-  const amt = Math.max(1, Math.round(Number(amount) || 1));
+  const amt = Math.max(1, Math.min(99, Math.round(Number(String(amount).replace(",", ".")) || 1)));
   const amtSplit = Math.max(2, amt);
 
-  const warn = (kind, t) => { setMsg({ t, ok: false }); setLog((l) => [...l, { kind, t, when: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }), eq: eqOf(active.L, active.R, ctx.sym) }]); };
+  const meldung = (kind, a) => {
+    const m = MELDUNGEN[kind];
+    if (!m) return "";
+    const v = m[hintStyle] || m.direkt;
+    return typeof v === "function" ? v(a || {}) : v;
+  };
+  const warn = (kind, a, aktion) => {
+    const t = MELDUNGEN[kind] ? meldung(kind, a) : String(a || "");
+    setMsg({ t, ok: false, aktion });
+    setLog((l) => [...l, { kind, t, when: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }), eq: eqOf(active.L, active.R, ctx.sym) }]);
+  };
 
   /* ---- Lösung & Probe ---- */
   const loesung = useMemo(() => {
@@ -544,8 +161,19 @@ export default function WaagemodellApp() {
   };
 
   /* ---- Zustand ---- */
-  const commit = (next, message) => { setPast((p) => [...p.slice(-40), scales]); setScales(next); setStage(null); if (message) setMsg(message); };
-  const undo = () => { if (!past.length) return; setScales(past[past.length - 1]); setPast(past.slice(0, -1)); setStage(null); setMsg({ t: "Ein Schritt zurück.", ok: true }); };
+  const commit = (next, message) => { setPast((p) => [...p.slice(-40), scales]); setFuture([]); setScales(next); setStage(null); if (message) setMsg(message); };
+  const undo = () => {
+    if (!past.length) return;
+    setFuture((f) => [scales, ...f].slice(0, 40));
+    setScales(past[past.length - 1]); setPast(past.slice(0, -1)); setStage(null);
+    setMsg({ t: "Ein Schritt zurück.", ok: true });
+  };
+  const redo = () => {
+    if (!future.length) return;
+    setPast((p) => [...p.slice(-40), scales]);
+    setScales(future[0]); setFuture(future.slice(1)); setStage(null);
+    setMsg({ t: "Wieder vorwärts.", ok: true });
+  };
 
   /* ---- Animationen ---- */
   const rectOf = (sel) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect() : null; };
@@ -588,8 +216,8 @@ export default function WaagemodellApp() {
     const s = scales.find((v) => v.id === id); if (!s || n === 0) return;
     const d = { x: F(0), y: F(0), k: F(0) }; d[kind] = F(n);
     const L = panAdd(s.L, d), R = panAdd(s.R, d);
-    if (!anti && [L, R].some((p) => KIND.some((k) => fVal(p[k]) < 0))) {
-      warn("zu-viel", "So viele Teile liegen nicht auf beiden Waagschalen. Nimm weniger – oder schalte die Antikugeln ein."); return;
+    if (!anti && !kalkuel && [L, R].some((p) => KIND.some((k) => fVal(p[k]) < 0))) {
+      warn("zu-viel", null, kalkuel ? null : { label: "ohne Waage weiterrechnen", run: () => setKalkuel(true) }); return;
     }
     animatePan(id, kind, [[fVal(s.L[kind]), fVal(L[kind])], [fVal(s.R[kind]), fVal(R[kind])]]);
     const wort = kind === "k" ? (Math.abs(n) === 1 ? `ein ${ctx.unit}` : `${Math.abs(n)} ${ctx.unit}e`) : `${Math.abs(n)}× ${kind === "x" ? ctx.xName : ctx.yName}`;
@@ -600,13 +228,13 @@ export default function WaagemodellApp() {
     const s = scales.find((v) => v.id === id); if (!s) return;
     const d = { x: F(0), y: F(0), k: F(0) }; d[kind] = F(n);
     const np = panAdd(s[side], d);
-    if (!anti && KIND.some((k) => fVal(np[k]) < 0)) { warn("zu-viel", "Dort liegt nichts mehr, was du wegnehmen könntest."); return; }
+    if (!anti && !kalkuel && KIND.some((k) => fVal(np[k]) < 0)) { warn("leer-seite"); return; }
     const L = side === "L" ? np : s.L, R = side === "R" ? np : s.R;
     animatePan(id, kind, side === "L" ? [[fVal(s.L[kind]), fVal(L[kind])], null] : [null, [fVal(s.R[kind]), fVal(R[kind])]]);
     setPast((p) => [...p.slice(-40), scales]);
     setScales(scales.map((v) => (v.id === id ? withStep(v, L, R, { op: "one", side }, true) : v)));
     setStage(null);
-    warn("einseitig", "Nur eine Seite verändert – die Waage kippt und es steht eine andere Gleichung da. Zum Umformen musst du beide Seiten gleich behandeln.");
+    warn("einseitig");
   };
 
   /* ---- Teilen & Vervielfachen als Handlung ---- */
@@ -614,7 +242,16 @@ export default function WaagemodellApp() {
     const n = amtSplit;
     if (type === "div") {
       const teilbar = [active.L, active.R].every((p) => KIND.every((k) => isInt(fDiv(p[k], F(n)))));
-      if (!teilbar) { warn("teilt-nicht", `Die Waagschalen lassen sich nicht in ${n} gleich große Haufen zerlegen. Probiere einen anderen Teiler.`); return; }
+      if (!teilbar) {
+        if (kalkuel) {
+          const f = F(1, n);
+          commit(scales.map((v) => (v.id === active.id ? withStep(v, panScale(active.L, f), panScale(active.R, f), { op: "div", n, frei: true }) : v)),
+            { t: `Ohne Waage gerechnet: beide Seiten durch ${n} geteilt.`, ok: true });
+          return;
+        }
+        warn("teilt-nicht", { n }, { label: "ohne Waage weiterrechnen", run: () => setKalkuel(true) });
+        return;
+      }
     }
     setStage({ scaleId: active.id, type, n });
     setMsg({ t: type === "div" ? `Beide Waagschalen sind in ${n} gleich schwere Haufen zerlegt. Nimm auf beiden Seiten ${n - 1} Haufen weg – ein Haufen bleibt liegen.` : `Beide Waagschalen ${n}-mal nebeneinander gelegt. Schütte sie zusammen – das Gleichgewicht bleibt.`, ok: true });
@@ -663,6 +300,17 @@ export default function WaagemodellApp() {
     return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
   }, [dragView, scales, coupled, anti, activeId, ctxKey, phase, stage]);
 
+  const pieceActivate = (kind, from) => {
+    const m = from.menge || 1;
+    if (phase === "bauen") buildDrop(from.scaleId, from.side, kind, -from.sign * m);
+    else if (coupled) bothSides(from.scaleId, kind, -from.sign * m);
+    else oneSide(from.scaleId, from.side, kind, -from.sign * m);
+  };
+  const trayActivate = (kind, sign) => {
+    if (phase === "bauen") buildDrop(activeId, activeSide, kind, sign);
+    else bothSides(activeId, kind, sign);
+  };
+
   const jumpTo = (id, i) => {
     const s = scales.find((v) => v.id === id); if (!s || i >= s.prot.length - 1) return;
     const r = s.prot[i];
@@ -675,7 +323,7 @@ export default function WaagemodellApp() {
     const s = scales.find((v) => v.id === id); if (!s || !n) return;
     const oldV = fVal(s[side][kind]);
     const nv = fAdd(s[side][kind], F(n));
-    if (!anti && fVal(nv) < 0) { setMsg({ t: "Auf dieser Waagschale liegt nichts mehr davon.", ok: false }); return; }
+    if (!anti && fVal(nv) < 0) { setMsg({ t: meldung("leer-seite"), ok: false }); return; }
     const p = { ...s[side], [kind]: nv };
     animatePan(id, kind, side === "L" ? [[oldV, fVal(nv)], null] : [null, [oldV, fVal(nv)]]);
     const next = scales.map((v) => {
@@ -704,10 +352,10 @@ export default function WaagemodellApp() {
     if (target === "tray") { if (fromPan) take(); return; }
     const parts = target.split(":"); const scaleId = Number(parts[1]), side = parts[2];
     if (fromPan) {
-      if (d.from.scaleId !== scaleId) { warn("umtragen", "Teile lassen sich nicht von einer Waage zur anderen tragen. Dafür gibt es Einsetzen und Gleichsetzen."); return; }
+      if (d.from.scaleId !== scaleId) { warn("umtragen"); return; }
       if (d.from.side !== side) {
         if (bauen) { buildDrop(scaleId, d.from.side, d.kind, -d.from.sign * m); buildDrop(scaleId, side, d.kind, d.from.sign * m); return; }
-        warn("hinueber", "Ein Teil auf die andere Waagschale zu legen verändert das Gleichgewicht. Nimm es stattdessen auf beiden Seiten weg."); return;
+        warn("hinueber"); return;
       }
       return;
     }
@@ -728,7 +376,7 @@ export default function WaagemodellApp() {
   const einsetzen = (srcId, dstId) => {
     const src = scales.find((s) => s.id === srcId), dst = scales.find((s) => s.id === dstId);
     const iso = isolated(src);
-    if (!iso) { warn("einsetzen", `Zum Einsetzen muss auf Waage (${src.label}) ein einzelner Block allein auf einer Waagschale liegen.`); return; }
+    if (!iso) { warn("einsetzen", { label: src.label }); return; }
     const teile = (p) => {
       const c = iso.v === "x" ? p.x : p.y;
       const rest = iso.v === "x" ? { ...p, x: F(0) } : { ...p, y: F(0) };
@@ -755,7 +403,7 @@ export default function WaagemodellApp() {
   const gleichsetzen = (aId, bId) => {
     const A = scales.find((s) => s.id === aId), B = scales.find((s) => s.id === bId);
     const ia = isolated(A), ib = isolated(B);
-    if (!ia || !ib || ia.v !== ib.v) { warn("gleichsetzen", "Zum Gleichsetzen muss auf beiden Waagen derselbe einzelne Block allein liegen."); return; }
+    if (!ia || !ib || ia.v !== ib.v) { warn("gleichsetzen"); return; }
     const neu = mkScale(`${A.label}=${B.label}`, ia.expr, ib.expr);
     commit([...scales, neu], { t: `Beide Waagen tragen dasselbe – also wiegen auch die beiden anderen Waagschalen gleich viel.`, ok: true });
     setActiveId(neu.id);
@@ -769,10 +417,10 @@ export default function WaagemodellApp() {
 
   /* ---- Laden ---- */
   const setup = (list, m, ph = "umformen") => {
-    uid = 0;
+    resetUid();
     const ns = list.map((p, i) => mkScale(i === 0 ? "I" : "II", p.L, p.R));
     setPast([]); setScales(ns); setTask(ph === "umformen" ? list.map((p) => ({ L: p.L, R: p.R })) : []);
-    setActiveId(1); setMode(m); setXv(1); setYv(1); setStage(null); setPending(null); setGuessX(""); setGuessY(""); setPhase(ph); setProbing(false);
+    setActiveId(1); setMode(m); setXv(1); setYv(1); setStage(null); setPending(null); setGuessX(""); setGuessY(""); setPhase(ph); setProbing(false); setZeigeLoesung(false);
   };
   const leereWaage = (m) => {
     setup(m === "lgs" ? [{ L: P(), R: P() }, { L: P(), R: P() }] : [{ L: P(), R: P() }], m, "bauen");
@@ -789,7 +437,7 @@ export default function WaagemodellApp() {
     const next = scales.map((s) => {
       if (s.id !== id) return s;
       const p = { ...s[side], [item]: fAdd(s[side][item], F(delta)) };
-      if (!anti && fVal(p[item]) < 0) return s;
+      if (!anti && !kalkuel && fVal(p[item]) < 0) return s;
       const ns = { ...s, [side]: p };
       return { ...ns, prot: [{ L: ns.L, R: ns.R, note: null }] };
     });
@@ -814,7 +462,7 @@ export default function WaagemodellApp() {
       const parsed = list.map(parseEquation);
       if (parsed.some((p) => !representable(p.L, p.R))) {
         setPending(parsed);
-        setMsg({ t: "So lässt sich das noch nicht auflegen – es kämen negative Anzahlen oder Bruchteile vor. Ich kann es mit erlaubten Umformungen passend machen.", ok: false });
+        setMsg({ t: meldung("nicht-darstellbar"), ok: false });
         return;
       }
       setup(parsed, mode);
@@ -823,7 +471,7 @@ export default function WaagemodellApp() {
   };
   const fixPending = () => {
     if (!pending) return;
-    uid = 0;
+    resetUid();
     const ns = pending.map((p, i) => {
       const r = repairSteps(p.L, p.R);
       let cur = mkScale(i === 0 ? "I" : "II", p.L, p.R), L = p.L, R = p.R;
@@ -864,8 +512,8 @@ export default function WaagemodellApp() {
     const okY = !brauchtY || Math.abs(gy - fVal(loesung.y)) < 1e-9;
     if (okX && okY) {
       setMsg({ t: "Richtig – setze zur Sicherheit noch in die Ausgangsgleichung ein, die Probe steht rechts.", ok: true });
-      setXv(fVal(loesung.x)); if (loesung.y) setYv(fVal(loesung.y)); setProbing(true);
-    } else warn("loesung-falsch", "Das stimmt noch nicht. Stell die Blockgewichte mit dem Regler ein und schau, wann die Waage waagerecht steht.");
+      setXv(fVal(loesung.x)); if (loesung.y) setYv(fVal(loesung.y)); setProbing(true); setZeigeLoesung(true);
+    } else warn("loesung-falsch");
   };
 
   /* ---- Arbeitsblatt ---- */
@@ -883,9 +531,11 @@ td.eq{border-bottom:1px dotted #bbb}td.op{width:150px;color:#7A5B22;border-botto
 <h1>Äquivalenzumformungen am Waagemodell</h1>
 <p class="meta">Kontext: ${esc(ctx.name)} · ${esc(ctx.story)}</p>
 <h3>Aufgabe</h3><p style="font-family:Menlo,monospace;font-size:17px">${task.map((t) => esc(eqOf(t.L, t.R, ctx.sym))).join("<br>")}</p>
+${task.map((t) => sachtext(t.L, t.R, ctx)).filter(Boolean).map((x) => `<p>${esc(x)}</p>`).join("")}
 ${leer ? "<h3>Dein Rechenweg</h3>" + leerzeilen : rows}
 <h3>Lösung</h3><p style="font-family:Menlo,monospace">${leer ? "________________" : esc(loesung.text)}</p>
 ${leer ? "" : (probe || []).map((p) => `<p class="meta">Probe ${esc(p.eq)}: ${p.l} = ${p.r} ${p.ok ? "✓" : "✗"}</p>`).join("")}
+${kalkuel ? '<p class="meta">Teile des Rechenwegs entstanden im Kalk\u00fclmodus, also ohne die Grenzen des Waagemodells.</p>' : ""}
 ${logHTML}</body></html>`;
   };
   const download = (leer, mitLog) => {
@@ -901,6 +551,60 @@ ${logHTML}</body></html>`;
       setMsg({ t: "Arbeitsblatt heruntergeladen. Falls der Browser das blockiert, steht der Quelltext unten zum Kopieren.", ok: true });
     } catch (e) { setSheet(html); setMsg({ t: "Download nicht möglich – der Quelltext steht unten zum Kopieren.", ok: false }); }
   };
+
+  /* ---- Zustand in der Adresszeile ---- */
+  const codeF = (f) => (f.d === 1 ? String(f.n) : `${f.n}/${f.d}`);
+  const codePan = (p) => KIND.map((k) => codeF(p[k])).join(",");
+  const codeNote = (n) => {
+    if (!n) return "";
+    if (n.op === "add") return `a${n.kind}${n.n}`;
+    if (n.op === "mul") return `m${n.n}`;
+    if (n.op === "div") return `d${n.n}${n.frei ? "f" : ""}`;
+    if (n.op === "swap") return "s";
+    if (n.op === "one") return `o${n.side}`;
+    return "";
+  };
+  const parseF = (t) => (t.includes("/") ? F(Number(t.split("/")[0]), Number(t.split("/")[1])) : F(Number(t)));
+  const parsePan = (t) => { const teile = t.split(",").map(parseF); const o = {}; KIND.forEach((k, i) => { o[k] = teile[i] || F(0); }); return o; };
+  const parseNote = (t) => {
+    if (!t) return null;
+    if (t[0] === "a") return { op: "add", kind: t[1], n: Number(t.slice(2)) };
+    if (t[0] === "m") return { op: "mul", n: Number(t.slice(1)) };
+    if (t[0] === "d") return { op: "div", n: Number(t.slice(1).replace("f", "")), frei: t.endsWith("f") };
+    if (t[0] === "s") return { op: "swap" };
+    if (t[0] === "o") return { op: "one", side: t[1] };
+    return null;
+  };
+  const codeState = () => {
+    const teile = scales.map((sc) => sc.label + "!" + sc.prot.map((r) => `${codePan(r.L)}:${codePan(r.R)}${r.note ? "*" + codeNote(r.note) + (r.bad ? "!" : "") : ""}`).join(";"));
+    return [mode, phase, ctxKey, task.length, teile.join("~")].join("|");
+  };
+  const decodeState = (t) => {
+    const [m, ph, c, tl, rest] = t.split("|");
+    resetUid();
+    const sc = rest.split("~").map((blk) => {
+      const [label, steps] = blk.split("!");
+      const prot = steps.split(";").map((st) => {
+        const [pans, note] = st.split("*");
+        const [l, r] = pans.split(":");
+        const bad = note ? note.endsWith("!") : false;
+        return { L: parsePan(l), R: parsePan(r), note: parseNote(bad ? note.slice(0, -1) : note), bad };
+      });
+      const letzte = prot[prot.length - 1];
+      return { ...mkScale(label, letzte.L, letzte.R), prot };
+    });
+    return { mode: m, phase: ph, ctxKey: c, taskLen: Number(tl), scales: sc };
+  };
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.history.replaceState) return;
+    if (!wiederhergestellt.current) return;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      q.delete("eq"); q.delete("eq2"); q.delete("ctx");
+      q.set("st", codeState());
+      window.history.replaceState(window.history.state || { waage: 1 }, "", `${window.location.pathname}?${q.toString()}`);
+    } catch (e) { /* Adresszeile nicht änderbar */ }
+  }, [scales, phase, mode, ctxKey, task]);
 
   /* ---- Aufgabe als Link ---- */
   const linkFor = () => {
@@ -927,9 +631,21 @@ ${logHTML}</body></html>`;
   };
   useEffect(() => {
     try {
-      const q = new URLSearchParams(window.location.search);
+      const q = new URLSearchParams(startSuche.current);
+      const st = q.get("st");
+      if (st) {
+        const d = decodeState(st);
+        setScales(d.scales); setMode(d.mode); setPhase(d.phase);
+        if (CONTEXTS[d.ctxKey]) setCtxKey(d.ctxKey);
+        setTask(d.taskLen ? d.scales.slice(0, d.taskLen).map((sc) => ({ L: sc.prot[0].L, R: sc.prot[0].R })) : []);
+        setActiveId(d.scales[0].id); setPast([]);
+        setMsg({ t: "Stand aus der Adresszeile wiederhergestellt.", ok: true });
+        wiederhergestellt.current = true;
+        return;
+      }
       const e1 = q.get("eq"), e2 = q.get("eq2"), c = q.get("ctx");
       if (c && CONTEXTS[c]) setCtxKey(c);
+      wiederhergestellt.current = true;
       if (!e1) return;
       const parsed = (e2 ? [e1, e2] : [e1]).map(parseEquation);
       const fertig = parsed.map((pp) => (representable(pp.L, pp.R) ? pp : repairSteps(pp.L, pp.R)));
@@ -937,7 +653,8 @@ ${logHTML}</body></html>`;
       setEq1(e1); if (e2) setEq2(e2);
       setMsg({ t: "Aufgabe aus dem Link geladen.", ok: true });
     } catch (err) {
-      setMsg({ t: `Der Link enthält keine lesbare Gleichung: ${err.message || err}`, ok: false });
+      wiederhergestellt.current = true;
+      setMsg({ t: `Der Link lässt sich nicht lesen: ${err.message || err}`, ok: false });
     }
   }, []);
 
@@ -971,12 +688,18 @@ ${logHTML}</body></html>`;
   }, []);
   useEffect(() => {
     const key = (e) => {
+      const imFeld = e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
       if (e.key === "z" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
       if (e.key === "Escape" && presenting) setPresenting(false);
+      // Pfeiltasten nur in der Präsentation, sonst kollidieren sie mit der
+      // Tastaturnavigation durch die Spielsteine.
+      if (imFeld || !presenting) return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); undo(); }
+      if (e.key === "ArrowRight") { e.preventDefault(); redo(); }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [presenting, past, scales]);
+  }, [presenting, past, future, scales]);
 
   /* ---- UI ---- */
   const btn = (extra = {}) => ({
@@ -1014,6 +737,7 @@ ${logHTML}</body></html>`;
         @keyframes waageFly { to { transform: translate(var(--dx), var(--dy)) scale(.35); opacity: 0 } }
         @keyframes waageDrop { from { transform: translateY(-26px) scale(.75); opacity: 0 } to { transform: none; opacity: 1 } }
         @keyframes waagePulse { 0%,100% { box-shadow: 0 0 0 3px rgba(168,130,60,.60) } 50% { box-shadow: 0 0 0 8px rgba(168,130,60,.14) } }
+        [data-piece]:focus-visible, button:focus-visible { outline: 3px solid #2C5F8A; outline-offset: 2px; }
         @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important } }
       `}</style>
       {fly.map((f) => (
@@ -1042,6 +766,12 @@ ${logHTML}</body></html>`;
         <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 10 }}>
           <button style={chip(presenting)} onClick={() => setPresenting(!presenting)}><Presentation size={12} style={{ display: "inline" }} /> {presenting ? "Präsentation beenden" : "Präsentation"}</button>
           {presenting && <button style={btn()} onClick={goFullscreen}><Maximize2 size={12} style={{ display: "inline" }} /> Vollbild</button>}
+          {presenting && ["beides", "waage", "protokoll"].map((a) => (
+            <button key={a} style={chip(ansicht === a)} onClick={() => setAnsicht(a)}
+              title={a === "beides" ? "Waage und Umformungen nebeneinander" : a === "waage" ? "nur die Waage" : "nur die Äquivalenzumformungen"}>
+              {a === "beides" ? "beides" : a === "waage" ? "nur Waage" : "nur Umformungen"}
+            </button>
+          ))}
           {presenting && <button style={chip(compact)} onClick={() => setCompact(!compact)}>
             {compact ? <ChevronDown size={12} style={{ display: "inline" }} /> : <ChevronUp size={12} style={{ display: "inline" }} />} Bedienung {compact ? "einblenden" : "ausblenden"}
           </button>}
@@ -1049,7 +779,9 @@ ${logHTML}</body></html>`;
             ? <button style={btn({ background: C.ok, color: "#fff", borderColor: C.ok })} onClick={startUmformen}>Umformen starten</button>
             : <button style={chip(coupled)} onClick={() => setCoupled(!coupled)}>{coupled ? <Link2 size={12} style={{ display: "inline" }} /> : <Link2Off size={12} style={{ display: "inline" }} />} {coupled ? "beidseitig" : "frei"}</button>}
           {!bare && <button style={btn()} onClick={() => leereWaage(mode)}>leere Waage</button>}
-          <button style={btn({ opacity: past.length ? 1 : 0.45 })} onClick={undo}><Undo2 size={12} style={{ display: "inline" }} /> zurück</button>
+          <button style={btn({ opacity: past.length ? 1 : 0.45 })} onClick={undo} title="Strg+Z, in der Präsentation auch Pfeil links"><Undo2 size={12} style={{ display: "inline" }} /> zurück</button>
+          <button style={btn({ opacity: future.length ? 1 : 0.45 })} onClick={redo} title="Pfeil rechts in der Präsentation"><Redo2 size={12} style={{ display: "inline" }} /> vor</button>
+          {!bare && <button style={chip(kalkuel)} onClick={() => setKalkuel(!kalkuel)} title="Rechnen ohne die Grenzen des Waagemodells">Kalkül {kalkuel ? "an" : "aus"}</button>}
           {!bare && <button style={chip(anti)} onClick={() => setAnti(!anti)} title="Rote Antikugeln: eine Kugel und eine Antikugel heben sich auf">Antikugeln {anti ? "an" : "aus"}</button>}
           {!bare && mode !== "lgs" && <button style={chip(showY)} onClick={() => setShowY(!showY)} title="Stellt zusätzlich violette y-Blöcke bereit">y-Blöcke {showY ? "an" : "aus"}</button>}
           {!presenting && <>
@@ -1123,6 +855,10 @@ ${logHTML}</body></html>`;
               <button style={btn()} onClick={() => download(true, false)}><Printer size={12} style={{ display: "inline" }} /> Blanko zum Ausfüllen</button>
               <button style={btn()} onClick={() => setSheet(sheet ? null : sheetHTML(false, true))}><Copy size={12} style={{ display: "inline" }} /> Quelltext anzeigen</button>
               <button style={btn({ color: C.neg, borderColor: C.neg })} onClick={() => setLog([])}>Protokoll leeren</button>
+              <button style={chip(hintStyle === "frage")} onClick={() => setHintStyle(hintStyle === "frage" ? "direkt" : "frage")}
+                title="Fragend regt zum Nachdenken an, direkt sagt sofort, was zu tun ist">
+                Hinweise: {hintStyle === "frage" ? "fragend" : "direkt"}
+              </button>
             </div>
             {sheet && <textarea readOnly value={sheet} onFocus={(e) => e.target.select()} style={{ width: "100%", height: 120, marginTop: 8, fontFamily: MONO, fontSize: 11, padding: 8, border: `1px solid ${C.grid}`, borderRadius: 6 }} />}
           </div>
@@ -1143,35 +879,54 @@ ${logHTML}</body></html>`;
           alignItems: "flex-start",
           flexWrap: presenting && landscape ? "nowrap" : "wrap",
         }}>
-          <div style={{ flex: presenting && landscape ? "1 1 58%" : "1 1 460px", minWidth: presenting ? 0 : 340 }}>
+          <div style={{
+            flex: alleinstehend ? "1 1 100%" : presenting && landscape ? "1 1 58%" : "1 1 460px",
+            minWidth: presenting ? 0 : 340,
+          }}>
             <div data-drop="tray" style={{
               ...card, marginBottom: 10, display: bare ? "none" : "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
               outline: hot === "tray" ? `2px dashed ${C.brassDark}` : "none", background: hot === "tray" ? "rgba(168,130,60,.15)" : "#fff",
             }}>
               <span style={{ ...eyebrow, margin: 0 }}>Kiste</span>
               {["k", "x", ...(hasY ? ["y"] : [])].map((k) => (
-                <Piece key={k} kind={k} ctx={ctx} z={z} title={k === "k" ? ctx.unit : k === "x" ? ctx.xName : ctx.yName} onPointerDown={(e) => startDrag(e, k, "tray", 1)} />
+                <Piece key={k} kind={k} ctx={ctx} z={z} title={k === "k" ? ctx.unit : k === "x" ? ctx.xName : ctx.yName}
+                  onPointerDown={(e) => startDrag(e, k, "tray", 1)} onActivate={() => trayActivate(k, 1)} />
               ))}
               {anti && <span style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 8, borderLeft: `1px dashed ${C.grid}` }}>
-                {["k", "x"].map((k) => <Piece key={"n" + k} kind={k} neg ctx={ctx} z={z} title="Antiteil" onPointerDown={(e) => startDrag(e, k, "tray", -1)} />)}
+                {["k", "x", ...(hasY ? ["y"] : [])].map((k) => <Piece key={"n" + k} kind={k} neg ctx={ctx} z={z} title="Antiteil"
+                  onPointerDown={(e) => startDrag(e, k, "tray", -1)} onActivate={() => trayActivate(k, -1)} />)}
               </span>}
+              {phase === "bauen" && (
+                <button style={btn({ padding: "4px 8px" })} onClick={() => setActiveSide(activeSide === "L" ? "R" : "L")}
+                  title="Wohin die Tastatureingabe legt">Zielschale: {activeSide === "L" ? "links" : "rechts"}</button>
+              )}
               <span style={{ fontSize: 12.5, color: C.ink2, flex: "1 1 150px" }}>
                 {anti ? "Ein rotes Antiteil und ein normales Teil heben sich gegenseitig auf." : "Auf eine Waagschale ziehen legt dazu, in die Kiste ziehen nimmt weg."}
               </span>
               <Trash2 size={16} color={C.ink2} />
             </div>
 
-            <div className="flex flex-wrap" style={{ gap: 8 }}>
+            {phase === "umformen" && task.length > 0 && ctxKey !== "algebra" && sachtext(task[0].L, task[0].R, ctx) && (
+              <div style={{ ...card, marginBottom: 8, borderLeft: `4px solid ${C.brass}` }}>
+                <div style={eyebrow}>Sachsituation</div>
+                <div style={{ fontSize: 14.5, lineHeight: 1.5 }}>
+                  {task.map((t, i) => <div key={i}>{sachtext(t.L, t.R, ctx)}</div>)}
+                </div>
+              </div>
+            )}
+
+            {zeigeWaage && <div className="flex flex-wrap" style={{ gap: 8 }}>
               {scales.map((s, idx) => {
                 const az = anzeige(s);
                 return (
                 <div key={s.id} style={{ flex: `1 1 ${400 * z}px` }}>
                   <Waage scale={s} xv={az.x} yv={az.y} hint={az.hint} z={z} ctx={ctx} hot={hot} stage={stage}
                     drag={dragView} coupled={coupled && phase === "umformen"} hl={hl} setHl={setHl} enter={enter}
-                    broken={s.prot.some((r) => r.bad)} phase={phase}
+                    broken={s.prot.some((r) => r.bad)} phase={phase} kalkuel={kalkuel}
                     active={scales.length > 1 && s.id === activeId}
                     onFocus={() => setActiveId(s.id)}
-                    onPieceDown={(e, kind, from) => { setActiveId(s.id); startDrag(e, kind, from, from.sign, from.menge || 1); }} />
+                    onPieceDown={(e, kind, from) => { setActiveId(s.id); startDrag(e, kind, from, from.sign, from.menge || 1); }}
+                    onPieceActivate={(kind, from) => { setActiveId(s.id); pieceActivate(kind, from); }} />
                   {idx >= (task.length || (mode === "lgs" ? 2 : 1)) && (
                     <div style={{ textAlign: "center", marginTop: -6 }}>
                       <button style={btn({ padding: "2px 8px", color: C.ink2 })}
@@ -1199,9 +954,9 @@ ${logHTML}</body></html>`;
                 </div>
                 );
               })}
-            </div>
+            </div>}
 
-            {active.prot.length > 1 && !bare && (
+            {active.prot.length > 1 && !bare && zeigeWaage && (
               <div style={{ ...card, marginTop: 10 }}>
                 <div style={eyebrow}>Schritte — Waage ({active.label})</div>
                 <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
@@ -1249,6 +1004,19 @@ ${logHTML}</body></html>`;
                   </span>
                   <button style={btn({ background: C.ok, color: "#fff", borderColor: C.ok })} onClick={startUmformen}>Umformen starten</button>
                 </div>
+                <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginTop: 8, borderTop: `1px dashed ${C.grid}`, paddingTop: 8 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 12 }}>Ziel: {ctx.sym.x} =</span>
+                  <input value={ziel} onChange={(e) => setZiel(e.target.value)} placeholder="z. B. 3"
+                    style={{ width: 64, fontFamily: MONO, fontSize: 13, padding: "4px 6px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />
+                  {ziel.trim() !== "" && (() => {
+                    const soll = Number(String(ziel).replace(",", "."));
+                    const lv = levelValues(active.L, active.R, xv, yv);
+                    const passt = lv.ok && Number.isFinite(soll) && Math.abs(lv.x - soll) < 1e-9;
+                    return <span style={{ fontFamily: MONO, fontSize: 12, color: passt ? C.ok : C.ink2 }}>
+                      {passt ? "✓ die Waage passt zum Ziel" : lv.ok ? `noch nicht – aktuell ${ctx.sym.x} = ${Math.round(lv.x * 100) / 100}` : "so geht die Waage nie ins Gleichgewicht"}
+                    </span>;
+                  })()}
+                </div>
               </div>
             )}
 
@@ -1256,7 +1024,10 @@ ${logHTML}</body></html>`;
               <div style={eyebrow}>Auf beiden Seiten zugleich{scales.length > 1 ? ` — Waage (${active.label})` : ""}</div>
               <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: 8 }}>
                 <span style={{ fontFamily: MONO, fontSize: 12 }}>Anzahl</span>
-                <input type="number" min={1} max={20} value={amount} onChange={(e) => setAmount(+e.target.value || 1)}
+                <input type="number" min={1} max={99} value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  onBlur={() => setAmount(String(amt))}
+                  aria-label="Anzahl der Teile je Umformung"
                   style={{ width: 54, fontFamily: MONO, fontSize: 13, padding: "4px 6px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />
                 {[{ it: "k", lbl: ctx.unit }, { it: "x", lbl: ctx.xName }, ...(hasY ? [{ it: "y", lbl: ctx.yName }] : [])].map((b) => (
                   <span key={b.it} className="flex items-center gap-1">
@@ -1311,19 +1082,22 @@ ${logHTML}</body></html>`;
                   <input value={guessY} onChange={(e) => setGuessY(e.target.value)} style={{ width: 60, fontFamily: MONO, fontSize: 13, padding: "4px 6px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />
                 </>}
                 <button style={btn()} onClick={pruefen}><Check size={11} style={{ display: "inline" }} /> prüfen</button>
-                <button style={btn()} onClick={() => { if (loesung.x) setXv(fVal(loesung.x)); if (loesung.y) setYv(fVal(loesung.y)); setProbing(true); }}><Eye size={11} style={{ display: "inline" }} /> zeigen</button>
+                <button style={btn()} onClick={() => { if (loesung.x) setXv(fVal(loesung.x)); if (loesung.y) setYv(fVal(loesung.y)); setProbing(true); setZeigeLoesung(true); }}><Eye size={11} style={{ display: "inline" }} /> zeigen</button>
                 {probing && <button style={btn()} onClick={() => setProbing(false)}>Probieren beenden</button>}
                 {gefunden && <span style={{ fontFamily: MONO, fontSize: 12, color: C.ok }}>alle Waagen waagerecht</span>}
               </div>
             </div>
           </div>
 
-          <div style={{ flex: presenting && landscape ? "1 1 42%" : "1 1 320px", minWidth: presenting ? 0 : 290 }}>
+          {zeigeProt && <div style={{
+            flex: alleinstehend ? "1 1 100%" : presenting && landscape ? "1 1 42%" : "1 1 320px",
+            minWidth: presenting ? 0 : 290,
+          }}>
             <div style={card}>
               <div style={eyebrow}>{phase === "bauen" ? "Deine Gleichung entsteht" : "Symbolische Ebene"}</div>
               {scales.map((s) => (
                 <div key={s.id} style={{ marginBottom: 14 }}>
-                  <div style={{ fontFamily: SERIF, fontWeight: 700, color: C.brassDark, fontSize: 15 * z, marginBottom: 4 }}>({s.label})</div>
+                  <div style={{ fontFamily: SERIF, fontWeight: 700, color: C.brassDark, fontSize: 15 * zP, marginBottom: 4 }}>({s.label})</div>
                   {s.prot.map((r, i) => {
                     const live = i === s.prot.length - 1;
                     const seite = (p, side) => {
@@ -1348,7 +1122,7 @@ ${logHTML}</body></html>`;
                       });
                     };
                     return (
-                      <div key={i} className="flex" style={{ fontFamily: MONO, fontSize: 14 * z, lineHeight: 1.8, color: live ? C.ink : C.ink2 }}>
+                      <div key={i} className="flex" style={{ fontFamily: MONO, fontSize: 14 * zP, lineHeight: 1.8, color: live ? C.ink : C.ink2 }}>
                         <span style={{ flex: 1, whiteSpace: "nowrap" }}>{seite(r.L, "L")} = {seite(r.R, "R")}</span>
                         {r.note && <span style={{ color: r.bad ? C.neg : C.brassDark, paddingLeft: 12, whiteSpace: "nowrap" }}>{r.bad ? "⚠ " : "| "}{noteStr(r.note, ctx.sym)}</span>}
                       </div>
@@ -1360,19 +1134,36 @@ ${logHTML}</body></html>`;
                 ? <div style={{ borderTop: `1px solid ${C.grid}`, paddingTop: 8, fontSize: 13 }}>
                   Sobald die Gleichung stimmt, auf „Umformen starten“ tippen – danach wirkt jeder Zug auf beide Seiten.
                 </div>
-                : <div style={{ borderTop: `1px solid ${C.grid}`, paddingTop: 8, fontFamily: MONO, fontSize: 13 * z }}>Lösung: <strong>{loesung.text}</strong></div>}
-              {phase === "umformen" && probe && loesung.x && probe.map((p) => (
-                <div key={p.i} style={{ fontFamily: MONO, fontSize: 12 * z, color: C.ink2 }}>Probe {p.eq}: {p.l} = {p.r} {p.ok ? "✓" : "✗"}</div>
+                : zeigeLoesung
+                  ? <div style={{ borderTop: `1px solid ${C.grid}`, paddingTop: 8, fontFamily: MONO, fontSize: 13 * zP }}>
+                    Lösung: <strong>{loesung.text}</strong>
+                    <button style={btn({ padding: "2px 8px", marginLeft: 8 })} onClick={() => setZeigeLoesung(false)}>verbergen</button>
+                  </div>
+                  : <div style={{ borderTop: `1px solid ${C.grid}`, paddingTop: 8 }}>
+                    <button style={btn()} onClick={() => setZeigeLoesung(true)}><Eye size={11} style={{ display: "inline" }} /> Lösung anzeigen</button>
+                  </div>}
+              {phase === "umformen" && zeigeLoesung && probe && loesung.x && probe.map((p) => (
+                <div key={p.i} style={{ fontFamily: MONO, fontSize: 12 * zP, color: C.ink2 }}>Probe {p.eq}: {p.l} = {p.r} {p.ok ? "✓" : "✗"}</div>
               ))}
             </div>
 
-            <div style={{
+            <div role="status" aria-live="polite" style={{
               display: "flex", gap: 8, marginTop: 10, padding: 12, borderRadius: 10,
               background: msg.ok ? "rgba(62,122,86,.10)" : "rgba(176,69,58,.10)",
               border: `1px solid ${msg.ok ? C.ok : C.neg}`,
             }}>
               <Lightbulb size={16} color={msg.ok ? C.ok : C.neg} style={{ flexShrink: 0, marginTop: 2 }} />
-              <div style={{ fontSize: 13.5 * z, lineHeight: 1.45 }}>{msg.t}</div>
+              <div style={{ fontSize: 13.5 * Math.min(zP, 1.6), lineHeight: 1.45 }}>
+                {msg.t}
+                {msg.aktion && (
+                  <div style={{ marginTop: 8 }}>
+                    <button style={btn({ borderColor: C.ink, background: C.ink, color: C.paper })}
+                      onClick={() => { msg.aktion.run(); setMsg({ t: "Kalkülmodus: Die Waage ist verlassen, negative Anzahlen und ungerade Teilungen sind jetzt erlaubt. Das Protokoll läuft weiter.", ok: true }); }}>
+                      {msg.aktion.label}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {!presenting && (
@@ -1381,7 +1172,7 @@ ${logHTML}</body></html>`;
                 Tippen nimmt beidseitig weg, Strg/Cmd + Z geht zurück.
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
     </div>
