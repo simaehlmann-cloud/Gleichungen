@@ -2,7 +2,7 @@ name: Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -18,14 +18,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
+
+      # enablement: true schaltet GitHub Pages beim ersten Lauf selbst ein
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -39,3 +44,13 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Link in die Zusammenfassung schreiben
+        run: |
+          {
+            echo "## Waagemodell ist online"
+            echo ""
+            echo "${{ steps.deployment.outputs.page_url }}"
+            echo ""
+            echo "Der Link bleibt gleich, der Inhalt wird bei jedem Push neu gebaut."
+          } >> "$GITHUB_STEP_SUMMARY"
