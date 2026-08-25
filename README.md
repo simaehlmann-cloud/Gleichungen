@@ -14,11 +14,21 @@ die symbolische Äquivalenzumformung mitgeschrieben wird.
 - Lineare Gleichungssysteme mit zwei Waagen: Einsetzen, Gleichsetzen, Zusammenschütten
 - Sachkontexte (Algebra, Marktstand, Streichhölzer), Antikugeln für negative Zwischenschritte
 - Aufgabengenerator mit fünf Niveaustufen, Selbstkontrolle, automatische Probe
-- Präsentationsmodus mit einklappbarer Bedienung, passt sich Displaygröße und Orientierung an, plus Vollbild
+- Präsentationsmodus mit einklappbarer Bedienung, wahlweise nur die Waage, nur die
+  Äquivalenzumformungen oder beides nebeneinander; passt sich Displaygröße und
+  Orientierung an, plus Vollbild
+- Die Lösung bleibt verborgen, bis sie angefordert oder richtig geraten wurde
 - Arbeitsblatt-Export als druckbares HTML, dazu ein Protokoll typischer Stolperstellen für die Lehrkraft
 - Schrittleiste mit Vorschau: per Klick zu einem früheren Stand zurückspringen
 - Aufgaben als Link teilen (`?eq=3x+2%3Dx%2B8`), Kontext und zweite Gleichung inklusive
 - Zehnerbündel ab 15 Teilen; ein Bündel nimmt zehn auf einmal weg
+- Rückmeldungen wahlweise fragend (Standard) oder direkt, umschaltbar im Lehrkraft-Bereich
+- Vollständig per Tastatur bedienbar: Spielsteine sind fokussierbar, Enter und Leertaste legen auf und nehmen weg
+- Der Rechenweg steht in der Adresszeile und überlebt einen Neustart des Browsers
+- Zielvorgabe beim Aufbau: „Ziel: x = 3" meldet, ob die gebaute Waage passt
+- Kalkülmodus für den Übergang, wenn das Waagemodell an seine Grenze kommt
+- Sachsituation: aus der Gleichung wird ein Aufgabentext im gewählten Kontext
+- Schritte zurück und wieder vor; in der Präsentation über Pfeil links und rechts
 
 Die Waage wird beim Lösungswert ausgewertet: Solange die Gleichung gilt, steht sie
 waagerecht. Eine einseitige Veränderung kippt sie sichtbar.
@@ -36,9 +46,14 @@ Node 20 oder neuer.
 
 ## GitHub Pages
 
-1. Repository anlegen und den Inhalt pushen (Branch `main`).
-2. Unter **Settings → Pages** bei *Source* **GitHub Actions** auswählen.
-3. Der Workflow `.github/workflows/pages.yml` baut bei jedem Push und veröffentlicht.
+1. Repository anlegen und den Inhalt pushen (Branch `main` oder `master`).
+2. Der Workflow `.github/workflows/pages.yml` baut bei jedem Push, schaltet Pages
+   beim ersten Lauf selbst ein (`enablement: true`) und veröffentlicht.
+3. Steht unter **Settings → Pages** noch *Deploy from a branch*, einmal auf
+   **GitHub Actions** umstellen — danach läuft alles ohne Zutun.
+
+Der Link ändert sich nie. Nach jedem Lauf steht er zusätzlich in der
+Zusammenfassung des Workflows und im Job `deploy` unter *github-pages*.
 
 Die Seite liegt danach unter `https://<benutzername>.github.io/<repository>/`.
 Weil `vite.config.js` mit `base: "./"` arbeitet, funktioniert derselbe Build
@@ -102,16 +117,49 @@ Console hochgeladen. Vor der ersten Veröffentlichung noch anpassen:
 Für iOS und den Apple App Store gilt derselbe Weg mit `npx cap add ios`, dafür
 werden allerdings ein Mac-Runner und ein Apple-Developer-Konto gebraucht.
 
+## Tests
+
+```bash
+npm test
+```
+
+Der Rahmen kommt ohne Testframework aus: `tests/run.mjs` bündelt jede Datei
+`tests/*.test.jsx` mit esbuild und führt sie in jsdom aus. Acht Suiten mit
+88 Prüfungen decken ab:
+
+| Datei | Inhalt |
+|---|---|
+| `lib.test.jsx` | Bruchrechnung, Parser, Reparatur, Generator (600 Zufallsaufgaben), Sachtexte |
+| `umformen.test.jsx` | Gleichung bauen, umformen, teilen, Undo, Balkenstellung |
+| `bedienung.test.jsx` | Aufbauphase, Tastatur, Zielvorgabe, Schrittleiste, Zehnerbündel |
+| `lgs.test.jsx` | Einsetzen, Gleichsetzen, Kalkülmodus, Sachsituation |
+| `zustand.test.jsx` | Adresszeile: Zustand sichern, Neustart, Aufgabe aus dem Link |
+| `zusatz.test.jsx` | Zurück und Vor, Tastenkürzel, Ansagen, Kalkül-Kennzeichnung |
+| `anzeige.test.jsx` | Anzahl-Feld, verborgene Lösung, Ansichten im Präsentationsmodus |
+| `rendering.test.jsx` | wacht über verirrte JSX-Klammern im gerenderten Text |
+
+Der Workflow `.github/workflows/tests.yml` führt sie bei jedem Push und jedem
+Pull Request aus.
+
 ## Aufbau des Projekts
 
 ```
-index.html                  Einstiegsseite
-src/main.jsx                React-Einstieg
-src/WaagemodellApp.jsx      die gesamte Anwendung
-src/index.css               Grundlayout und die wenigen Utility-Klassen
-public/                     Icons und Web-App-Manifest
-capacitor.config.json       Konfiguration der nativen Hülle
-.github/workflows/          Pages, Debug-APK, signiertes Release
+index.html                     Einstiegsseite
+src/main.jsx                   React-Einstieg
+src/WaagemodellApp.jsx         Oberfläche und Ablaufsteuerung
+src/lib/fraction.js            exakte Bruchrechnung, Terme, Waagschalen
+src/lib/parser.js              Gleichungen aus Text lesen
+src/lib/model.js               Darstellbarkeit, Reparatur, Gleichgewichtswerte
+src/lib/texts.js               Rückmeldungen, Sachkontexte, Aufgabentexte
+src/lib/tasks.js               Aufgabensammlung und Generator
+src/lib/tokens.js              Farben und Schriften
+src/components/Piece.jsx       Kugeln, Blöcke, Zehnerbündel
+src/components/Waage.jsx       die Balkenwaage
+src/index.css                  Grundlayout und die wenigen Utility-Klassen
+tests/                         Testrahmen und Suiten
+public/                        Icons und Web-App-Manifest
+capacitor.config.json          Konfiguration der nativen Hülle
+.github/workflows/             Tests, Pages, Debug-APK, signiertes Release
 ```
 
 Die Anwendung kommt ohne Backend und ohne Datenspeicherung aus; alles läuft im
