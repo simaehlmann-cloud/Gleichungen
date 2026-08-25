@@ -1,0 +1,18 @@
+/* Grundlayout */
+html, body, #root { height: 100%; margin: 0; }
+body { background: #EDEFE8; -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
+button { font: inherit; }
+input, select, textarea { font: inherit; color: inherit; background: #fff; }
+
+/* Die wenigen Utility-Klassen, die die Komponente verwendet.
+   Ersetzt Tailwind, damit das Projekt ohne Build-Plugin auskommt. */
+.flex { display: flex; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+
+/* Auf Touchgeräten soll das Ziehen der Spielsteine nicht scrollen */
+[data-piece] { touch-action: none; }

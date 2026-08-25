@@ -1,0 +1,9 @@
+{
+  "appId": "de.schule.waagemodell",
+  "appName": "Waagemodell",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#EDEFE8",
+    "allowMixedContent": false
+  }
+}
