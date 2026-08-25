@@ -14,8 +14,11 @@ die symbolische Äquivalenzumformung mitgeschrieben wird.
 - Lineare Gleichungssysteme mit zwei Waagen: Einsetzen, Gleichsetzen, Zusammenschütten
 - Sachkontexte (Algebra, Marktstand, Streichhölzer), Antikugeln für negative Zwischenschritte
 - Aufgabengenerator mit fünf Niveaustufen, Selbstkontrolle, automatische Probe
-- Präsentationsmodus, der sich an Displaygröße und Orientierung anpasst, plus Vollbild
+- Präsentationsmodus mit einklappbarer Bedienung, passt sich Displaygröße und Orientierung an, plus Vollbild
 - Arbeitsblatt-Export als druckbares HTML, dazu ein Protokoll typischer Stolperstellen für die Lehrkraft
+- Schrittleiste mit Vorschau: per Klick zu einem früheren Stand zurückspringen
+- Aufgaben als Link teilen (`?eq=3x+2%3Dx%2B8`), Kontext und zweite Gleichung inklusive
+- Zehnerbündel ab 15 Teilen; ein Bündel nimmt zehn auf einmal weg
 
 Die Waage wird beim Lösungswert ausgewertet: Solange die Gleichung gilt, steht sie
 waagerecht. Eine einseitige Veränderung kippt sie sichtbar.
