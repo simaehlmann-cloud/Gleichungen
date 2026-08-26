@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
-  Plus, Minus, RotateCcw, Eye, Divide, X as XIcon, ArrowLeftRight, Lightbulb,
+  RotateCcw, Eye, Divide, X as XIcon, ArrowLeftRight, Lightbulb,
   Check, Undo2, Redo2, Maximize2, Presentation, Trash2, Link2, Link2Off, Play,
   Dices, Printer, GraduationCap, Scissors, Copy, AlertTriangle, ChevronDown, ChevronUp, Link as LinkIcon,
 } from "lucide-react";
@@ -8,7 +8,7 @@ import {
 import { C, MONO, SERIF } from "./lib/tokens.js";
 import {
   F, fAdd, fSub, fMul, fDiv, fVal, fZero, fAbs, fStr, isInt,
-  KIND, P, panAdd, panScale, panVal, panEmpty, termParts, termStr, eqOf, noteStr,
+  KIND, P, panAdd, panScale, panVal, panEmpty, termParts, eqOf, noteStr,
 } from "./lib/fraction.js";
 import { parseEquation } from "./lib/parser.js";
 import { representable, repairSteps, levelValues, mkScale, withStep, resetUid } from "./lib/model.js";
@@ -319,21 +319,27 @@ export default function WaagemodellApp() {
       { t: `Zurück zu Schritt ${i + 1}. Alles danach ist verworfen.`, ok: true });
   };
 
-  const buildDrop = (id, side, kind, n) => {
-    const s = scales.find((v) => v.id === id); if (!s || !n) return;
-    const oldV = fVal(s[side][kind]);
-    const nv = fAdd(s[side][kind], F(n));
-    if (!anti && fVal(nv) < 0) { setMsg({ t: meldung("leer-seite"), ok: false }); return; }
-    const p = { ...s[side], [kind]: nv };
-    animatePan(id, kind, side === "L" ? [[oldV, fVal(nv)], null] : [null, [oldV, fVal(nv)]]);
-    const next = scales.map((v) => {
-      if (v.id !== id) return v;
-      const ns = { ...v, [side]: p };
-      return { ...ns, prot: [{ L: ns.L, R: ns.R, note: null }] };
-    });
-    commit(next, { t: "Aufbau: die Gleichung entsteht Stück für Stück mit.", ok: true });
+  /* Aufbauphase: eine oder mehrere Schalen in einem Schritt verändern.
+     Mehrere Änderungen müssen zusammen angewandt werden, sonst überschreibt
+     die zweite die erste, weil der Zustand aus der Closure noch der alte ist. */
+  const buildApply = (id, aenderungen, text) => {
+    const s = scales.find((v) => v.id === id); if (!s) return;
+    const neu = { L: { ...s.L }, R: { ...s.R } };
+    for (const { side, kind, n } of aenderungen) {
+      if (!n) continue;
+      const alt = fVal(neu[side][kind]);
+      const nv = fAdd(neu[side][kind], F(n));
+      if (!anti && !kalkuel && fVal(nv) < 0) { setMsg({ t: meldung("leer-seite"), ok: false }); return; }
+      neu[side][kind] = nv;
+      animatePan(id, kind, side === "L" ? [[alt, fVal(nv)], null] : [null, [alt, fVal(nv)]]);
+    }
+    const next = scales.map((v) => (v.id === id
+      ? { ...v, L: neu.L, R: neu.R, prot: [{ L: neu.L, R: neu.R, note: null }] }
+      : v));
+    commit(next, { t: text || "Aufbau: die Gleichung entsteht Stück für Stück mit.", ok: true });
     setTask([]);
   };
+  const buildDrop = (id, side, kind, n) => buildApply(id, [{ side, kind, n }]);
 
   function handleDrop(d, target) {
     if (stage) { setMsg({ t: "Erst den Teilen-Schritt abschließen oder abbrechen.", ok: false }); return; }
@@ -354,7 +360,13 @@ export default function WaagemodellApp() {
     if (fromPan) {
       if (d.from.scaleId !== scaleId) { warn("umtragen"); return; }
       if (d.from.side !== side) {
-        if (bauen) { buildDrop(scaleId, d.from.side, d.kind, -d.from.sign * m); buildDrop(scaleId, side, d.kind, d.from.sign * m); return; }
+        if (bauen) {
+          buildApply(scaleId, [
+            { side: d.from.side, kind: d.kind, n: -d.from.sign * m },
+            { side, kind: d.kind, n: d.from.sign * m },
+          ], "Im Aufbau darfst du Teile umlegen – beim Umformen nicht mehr.");
+          return;
+        }
         warn("hinueber"); return;
       }
       return;

@@ -1,4 +1,4 @@
-import { F, fSub, fDiv, fVal, fZero, isInt, lcm, KIND, P, panAdd, panScale, eqOf } from "./fraction.js";
+import { F, fSub, fDiv, fVal, fZero, isInt, lcm, KIND, panAdd, panScale } from "./fraction.js";
 
 const representable = (L, R) => [L, R].every((p) => KIND.every((k) => isInt(p[k]) && fVal(p[k]) >= 0));
 function repairSteps(L, R) {

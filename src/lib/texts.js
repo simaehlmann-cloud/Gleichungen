@@ -1,4 +1,4 @@
-import { KIND, fZero, fVal, isInt } from "./fraction.js";
+import { fZero, fVal, isInt } from "./fraction.js";
 
 const MELDUNGEN = {
   "zu-viel": {
