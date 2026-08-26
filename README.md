@@ -124,8 +124,8 @@ npm test
 ```
 
 Der Rahmen kommt ohne Testframework aus: `tests/run.mjs` bündelt jede Datei
-`tests/*.test.jsx` mit esbuild und führt sie in jsdom aus. Acht Suiten mit
-88 Prüfungen decken ab:
+`tests/*.test.jsx` mit esbuild und führt sie in jsdom aus. Neun Suiten mit
+92 Prüfungen decken ab:
 
 | Datei | Inhalt |
 |---|---|
@@ -137,6 +137,7 @@ Der Rahmen kommt ohne Testframework aus: `tests/run.mjs` bündelt jede Datei
 | `zusatz.test.jsx` | Zurück und Vor, Tastenkürzel, Ansagen, Kalkül-Kennzeichnung |
 | `anzeige.test.jsx` | Anzahl-Feld, verborgene Lösung, Ansichten im Präsentationsmodus |
 | `rendering.test.jsx` | wacht über verirrte JSX-Klammern im gerenderten Text |
+| `umlegen.test.jsx` | Teile zwischen den Schalen umlegen, nur im Aufbau erlaubt |
 
 Der Workflow `.github/workflows/tests.yml` führt sie bei jedem Push und jedem
 Pull Request aus.
