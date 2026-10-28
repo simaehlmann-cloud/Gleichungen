@@ -7,6 +7,8 @@ die symbolische Äquivalenzumformung mitgeschrieben wird.
 ## Funktionsumfang
 
 - Balkenwaage mit Kugeln (Wert 1) sowie x- und y-Blöcken, per Maus, Finger oder Stift zu bewegen
+- Drei Darstellungen der Waage, umschaltbar in den Einstellungen: klassisch, Comic (mit Gesicht, das bei Schieflage schaut) und realistisch (Laborwaage mit Zeiger und Skala)
+- Aufgeräumte Bedienung: Kopfleiste, Phasenschalter Aufbauen/Umformen, darunter nur die Umformungen
 - **Aufbauphase**: leere, waagerechte Waage, jede Schale einzeln bestücken, die Gleichung entsteht mit
 - **Umformphase**: jeder Zug wirkt auf beide Seiten, jeder Schritt erscheint als Protokollzeile `3x + 2 = x + 8 | −2`
 - Gleichung eintippen (`3(x − 1) + 4 = x + 9`) und die passende Waage bauen lassen; nicht darstellbare Eingaben werden auf Wunsch mit erlaubten Umformungen waagentauglich gemacht
@@ -117,6 +119,37 @@ Console hochgeladen. Vor der ersten Veröffentlichung noch anpassen:
 Für iOS und den Apple App Store gilt derselbe Weg mit `npx cap add ios`, dafür
 werden allerdings ein Mac-Runner und ein Apple-Developer-Konto gebraucht.
 
+## iOS und TestFlight
+
+Der Workflow `.github/workflows/ios.yml` baut nach dem Vorbild von FairSeat, nur mit
+Capacitor statt Cordova. Er läuft ausschließlich von Hand (**Actions → iOS (TestFlight)
+→ Run workflow**), weil macOS-Minuten zehnfach zählen und jeder Upload eine
+Build-Nummer dauerhaft belegt.
+
+Ablauf: Tests auf Linux, dann auf `macos-26` Web-App bauen, `cap add ios`, Icon,
+Startbild, Info.plist und Datenschutz-Manifest einsetzen, unsigniert bauen (Nachweis,
+dass alles übersetzt), signiert archivieren, IPA exportieren, prüfen und hochladen.
+Die Build-Nummer ist die Laufnummer, die Version steht in `package.json`.
+
+Von FairSeat weiterverwendbar (gleiches Konto): `IOS_CERTIFICATE_P12_BASE64`,
+`IOS_CERTIFICATE_PASSWORD`, `IOS_TEAM_ID`, `IOS_SIGNING_IDENTITY`, `ASC_KEY_ID`,
+`ASC_ISSUER_ID`, `ASC_KEY_P8`. Neu für diese App:
+
+1. developer.apple.com → Identifiers: App-ID mit der Kennung aus `capacitor.config.json`
+2. Profiles: **App Store**-Profil für diese App-ID, als base64 in `IOS_PROVISIONING_PROFILE`
+3. App Store Connect: neue App mit derselben Bundle-ID anlegen
+
+Die Kennung lässt sich nach dem Anlegen in App Store Connect nicht mehr ändern.
+Der Workflow bricht mit einer klaren Meldung ab, wenn Profil und Kennung nicht
+zusammenpassen.
+
+Lokal mit Xcode:
+
+```bash
+npm run ios:sync     # baut die Web-App und aktualisiert ios/
+npm run ios:open     # öffnet das Projekt in Xcode
+```
+
 ## Tests
 
 ```bash
@@ -155,12 +188,15 @@ src/lib/texts.js               Rückmeldungen, Sachkontexte, Aufgabentexte
 src/lib/tasks.js               Aufgabensammlung und Generator
 src/lib/tokens.js              Farben und Schriften
 src/components/Piece.jsx       Kugeln, Blöcke, Zehnerbündel
-src/components/Waage.jsx       die Balkenwaage
+src/components/Waage.jsx       die Balkenwaage mit drei Gestellen
+src/lib/stile.js               Waagen-Stile: Geometrie, Farben, Ausschwingen
 src/index.css                  Grundlayout und die wenigen Utility-Klassen
 tests/                         Testrahmen und Suiten
 public/                        Icons und Web-App-Manifest
 capacitor.config.json          Konfiguration der nativen Hülle
-.github/workflows/             Tests, Pages, Debug-APK, signiertes Release
+res/ios/                       App-Icon, Startbild, Datenschutz-Manifest für iOS
+tools/ios-projekt.rb           setzt Version, Signierung und Manifest im Xcode-Projekt
+.github/workflows/             Tests, Pages, Debug-APK, signiertes Release, iOS
 ```
 
 Die Anwendung kommt ohne Backend und ohne Datenspeicherung aus; alles läuft im

@@ -5,5 +5,10 @@
   "android": {
     "backgroundColor": "#EDEFE8",
     "allowMixedContent": false
+  },
+  "ios": {
+    "backgroundColor": "#EDEFE8",
+    "contentInset": "never",
+    "scrollEnabled": true
   }
 }
