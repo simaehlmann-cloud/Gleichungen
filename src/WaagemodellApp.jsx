@@ -3,7 +3,7 @@ import {
   Eye, Divide, X as XIcon, ArrowLeftRight, Lightbulb,
   Check, Undo2, Redo2, Maximize2, Presentation, Trash2, Link2, Link2Off, Play,
   Dices, Printer, GraduationCap, Scissors, Copy, AlertTriangle, ChevronDown, ChevronUp, Link as LinkIcon,
-  Settings2, ListChecks, Plus, Minus,
+  Settings2, ListChecks, Plus, Minus, Lock, Sparkles,
 } from "lucide-react";
 
 import { C, MONO, SERIF } from "./lib/tokens.js";
@@ -15,6 +15,7 @@ import { parseEquation } from "./lib/parser.js";
 import { representable, repairSteps, levelValues, mkScale, withStep, resetUid } from "./lib/model.js";
 import { MELDUNGEN, CONTEXTS, sachtext } from "./lib/texts.js";
 import { STILE, STIL_KEYS, stilOf, stilLaden, stilSpeichern } from "./lib/stile.js";
+import { useVollversion, FUNKTIONEN } from "./lib/vollversion.js";
 import { A1, A2, LEVELS, genTask, genNeg } from "./lib/tasks.js";
 import { Piece } from "./components/Piece.jsx";
 import { Waage } from "./components/Waage.jsx";
@@ -62,7 +63,15 @@ export default function WaagemodellApp() {
      Beim Start ohne Aufgabe im Link steht die Aufgabenwahl offen. */
   const [stil, setStil] = useState(stilLaden);
   const [panel, setPanel] = useState(() => (typeof window !== "undefined" && /[?&](st|eq)=/.test(window.location.search) ? null : "aufgabe"));
-  const waehleStil = (k) => { setStil(k); stilSpeichern(k); };
+  /* Vollversion: gesperrte Funktionen öffnen den Kaufbereich statt zu reagieren. */
+  const V = useVollversion();
+  const [gesperrt, setGesperrt] = useState(null);
+  const frei = (funktion) => {
+    if (V.voll) return true;
+    setGesperrt(funktion); setPanel("vollversion");
+    return false;
+  };
+  const waehleStil = (k) => { if (k !== "klassisch" && !frei("stil")) return; setStil(k); stilSpeichern(k); };
   const umschalten = (name) => setPanel((p) => (p === name ? null : name));
   const [hl, setHl] = useState(null);
   const [enter, setEnter] = useState(null);
@@ -75,8 +84,10 @@ export default function WaagemodellApp() {
   const startSuche = useRef(typeof window !== "undefined" ? window.location.search : "");
   const wiederhergestellt = useRef(false);
 
-  const ctx = useMemo(() => ({ ...CONTEXTS[ctxKey], stil }), [ctxKey, stil]);
-  const stilHoehe = stilOf(stil).hoehe;
+  /* Wurde der Kauf erstattet, fällt ein gespeicherter Zusatzstil auf klassisch zurück. */
+  const stilJetzt = V.voll ? stil : "klassisch";
+  const ctx = useMemo(() => ({ ...CONTEXTS[ctxKey], stil: stilJetzt }), [ctxKey, stilJetzt]);
+  const stilHoehe = stilOf(stilJetzt).hoehe;
   const active = scales.find((s) => s.id === activeId) || scales[0];
   const partner = scales.find((s) => s.id === partnerId && s.id !== active.id) || scales.find((s) => s.id !== active.id) || null;
   const hasY = mode === "lgs" || showY || scales.some((s) => !fZero(s.L.y) || !fZero(s.R.y));
@@ -796,7 +807,8 @@ ${logHTML}</body></html>`;
             <ListChecks size={12} style={{ display: "inline" }} /> Aufgabe</button>}
           <button style={btn({ opacity: past.length ? 1 : 0.45 })} onClick={undo} title="Strg+Z, in der Präsentation auch Pfeil links"><Undo2 size={12} style={{ display: "inline" }} /> zurück</button>
           <button style={btn({ opacity: future.length ? 1 : 0.45 })} onClick={redo} title="Pfeil rechts in der Präsentation"><Redo2 size={12} style={{ display: "inline" }} /> vor</button>
-          <button style={chip(presenting)} onClick={() => setPresenting(!presenting)}><Presentation size={12} style={{ display: "inline" }} /> {presenting ? "Präsentation beenden" : "Präsentation"}</button>
+          <button style={chip(presenting)} onClick={() => { if (!presenting && !frei("praesentation")) return; setPresenting(!presenting); }}>
+            {!V.voll && !presenting ? <Lock size={12} style={{ display: "inline" }} /> : <Presentation size={12} style={{ display: "inline" }} />} {presenting ? "Präsentation beenden" : "Präsentation"}</button>
           {presenting && <button style={btn()} onClick={goFullscreen}><Maximize2 size={12} style={{ display: "inline" }} /> Vollbild</button>}
           {presenting && ["beides", "waage", "protokoll"].map((a) => (
             <button key={a} style={chip(ansicht === a)} onClick={() => setAnsicht(a)}
@@ -817,7 +829,7 @@ ${logHTML}</body></html>`;
               <div style={eyebrow}>Aufgabe wählen</div>
               <div className="flex flex-wrap items-center gap-2">
                 <button style={chip(mode === "einzeln")} onClick={() => leereWaage("einzeln")}>Eine Waage</button>
-                <button style={chip(mode === "lgs")} onClick={() => leereWaage("lgs")}>Zwei Waagen</button>
+                <button style={chip(mode === "lgs")} onClick={() => { if (frei("lgs")) leereWaage("lgs"); }}>{!V.voll && <Lock size={11} style={{ display: "inline", marginRight: 3 }} aria-label="Vollversion" />}Zwei Waagen</button>
                 <select style={btn()} value="" onChange={(e) => load(mode, +e.target.value)} aria-label="Beispielaufgabe">
                   <option value="" disabled>Beispiel …</option>
                   {(mode === "einzeln" ? A1 : A2).map((a, i) => <option key={i} value={i}>{a.name}</option>)}
@@ -825,9 +837,9 @@ ${logHTML}</body></html>`;
               </div>
               <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
                 <select style={btn()} value={level} onChange={(e) => setLevel(+e.target.value)} aria-label="Niveaustufe">
-                  {LEVELS.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  {LEVELS.map((l) => <option key={l.id} value={l.id}>{l.name}{l.id === 5 && !V.voll ? " · Vollversion" : ""}</option>)}
                 </select>
-                <button style={btn({ background: C.ink, color: C.paper, borderColor: C.ink })} onClick={() => zufall(level)}>
+                <button style={btn({ background: C.ink, color: C.paper, borderColor: C.ink })} onClick={() => { if (level === 5 && !frei("lgs")) return; zufall(level); }}>
                   <Dices size={12} style={{ display: "inline" }} /> Zufallsaufgabe
                 </button>
               </div>
@@ -858,11 +870,11 @@ ${logHTML}</body></html>`;
             <div>
               <div style={eyebrow}>Waage</div>
               <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Stil der Waage">
-                {STIL_KEYS.map((k) => <button key={k} style={chip(stil === k)} aria-pressed={stil === k} onClick={() => waehleStil(k)}>{STILE[k].name}</button>)}
+                {STIL_KEYS.map((k) => <button key={k} style={chip(stilJetzt === k)} aria-pressed={stilJetzt === k} onClick={() => waehleStil(k)}>{!V.voll && k !== "klassisch" && <Lock size={11} style={{ display: "inline", marginRight: 3 }} aria-label="Vollversion" />}{STILE[k].name}</button>)}
               </div>
               <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
-                <select style={btn()} value={ctxKey} onChange={(e) => setCtxKey(e.target.value)} aria-label="Sachkontext">
-                  {Object.entries(CONTEXTS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+                <select style={btn()} value={ctxKey} onChange={(e) => { const k = e.target.value; if (k !== "algebra" && !frei("kontext")) return; setCtxKey(k); }} aria-label="Sachkontext">
+                  {Object.entries(CONTEXTS).map(([k, v]) => <option key={k} value={k}>{v.name}{k !== "algebra" && !V.voll ? " · Vollversion" : ""}</option>)}
                 </select>
               </div>
             </div>
@@ -883,9 +895,41 @@ ${logHTML}</body></html>`;
                   title="Fragend regt zum Nachdenken an, direkt sagt sofort, was zu tun ist">
                   Hinweise: {hintStyle === "frage" ? "fragend" : "direkt"}
                 </button>
-                <button style={chip(showTeacher)} onClick={() => setShowTeacher(!showTeacher)}><GraduationCap size={12} style={{ display: "inline" }} /> Lehrkraft{log.length ? ` (${log.length})` : ""}</button>
+                <button style={chip(showTeacher)} onClick={() => { if (!showTeacher && !frei("lehrkraft")) return; setShowTeacher(!showTeacher); }}>{V.voll ? <GraduationCap size={12} style={{ display: "inline" }} /> : <Lock size={12} style={{ display: "inline" }} />} Lehrkraft{log.length ? ` (${log.length})` : ""}</button>
               </div>
             </div>
+            {V.kaufbar && (
+              <div>
+                <div style={eyebrow}>Vollversion</div>
+                {V.voll
+                  ? <div style={{ fontSize: 13, color: C.ok }}><Check size={12} style={{ display: "inline" }} /> freigeschaltet – danke!</div>
+                  : <button style={btn({ background: C.ink, color: C.paper, borderColor: C.ink })} onClick={() => { setGesperrt(null); setPanel("vollversion"); }}>
+                    <Sparkles size={12} style={{ display: "inline" }} /> Vollversion ansehen</button>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {panel === "vollversion" && !presenting && (
+          <div role="dialog" aria-label="Vollversion" style={{ ...card, marginBottom: 12, borderColor: C.brassDark, maxWidth: 640 }}>
+            <div style={eyebrow}>Vollversion</div>
+            {gesperrt && !V.voll && <p style={{ margin: "0 0 8px", fontSize: 14 }}><strong>{FUNKTIONEN[gesperrt]}</strong> gehört zur Vollversion.</p>}
+            {V.voll
+              ? <p style={{ margin: "0 0 8px", fontSize: 14, color: C.ok }}>Die Vollversion ist freigeschaltet. Alle Funktionen stehen bereit.</p>
+              : <>
+                <p style={{ margin: "0 0 6px", fontSize: 14 }}>Zum Üben ist alles kostenlos: Waage aufbauen, umformen, Aufgaben erzeugen, Lösung prüfen. Für den Unterricht schaltet die Vollversion frei:</p>
+                <ul style={{ margin: "0 0 10px", paddingLeft: 20, fontSize: 14, lineHeight: 1.6 }}>
+                  {Object.values(FUNKTIONEN).map((f) => <li key={f}>{f}</li>)}
+                </ul>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button style={btn({ background: C.ok, color: "#fff", borderColor: C.ok, opacity: V.beschaeftigt ? 0.6 : 1 })} disabled={V.beschaeftigt} onClick={V.kaufen}>
+                    <Sparkles size={12} style={{ display: "inline" }} /> Vollversion kaufen{V.preis ? ` · ${V.preis}` : ""}</button>
+                  <button style={btn({ opacity: V.beschaeftigt ? 0.6 : 1 })} disabled={V.beschaeftigt} onClick={V.wiederherstellen}>Kauf wiederherstellen</button>
+                  <button style={btn()} onClick={() => setPanel(null)}>schließen</button>
+                </div>
+                <p style={{ margin: "8px 0 0", fontSize: 12.5, color: C.ink2 }}>Einmaliger Kauf, kein Abo, keine Werbung. Bezahlt wird über Apple; die App erfährt nur, ob die Vollversion gekauft ist. Auf einem neuen Gerät genügt „Kauf wiederherstellen“.</p>
+              </>}
+            {V.hinweis && <div role="status" style={{ marginTop: 8, fontSize: 13.5, color: V.hinweis.ok ? C.ok : C.neg }}>{V.hinweis.t}</div>}
           </div>
         )}
 
@@ -994,7 +1038,7 @@ ${logHTML}</body></html>`;
                 const az = anzeige(s);
                 return (
                 <div key={s.id} style={{ flex: `1 1 ${400 * z}px` }}>
-                  <Waage scale={s} xv={az.x} yv={az.y} hint={az.hint} z={z} ctx={ctx} stil={stil} hot={hot} stage={stage}
+                  <Waage scale={s} xv={az.x} yv={az.y} hint={az.hint} z={z} ctx={ctx} stil={stilJetzt} hot={hot} stage={stage}
                     drag={dragView} coupled={coupled && phase === "umformen"} hl={hl} setHl={setHl} enter={enter}
                     broken={s.prot.some((r) => r.bad)} phase={phase} kalkuel={kalkuel}
                     active={scales.length > 1 && s.id === activeId}

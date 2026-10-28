@@ -1,0 +1,14 @@
+{
+  "name": "waage-store",
+  "version": "1.0.0",
+  "private": true,
+  "description": "In-App-Kauf der Waagemodell-Vollversion über StoreKit 2 (nur iOS)",
+  "license": "MIT",
+  "author": "Simon Mählmann",
+  "repository": "https://github.com/simaehlmann-cloud/Gleichungen",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

@@ -150,6 +150,22 @@ npm run ios:sync     # baut die Web-App und aktualisiert ios/
 npm run ios:open     # öffnet das Projekt in Xcode
 ```
 
+## Vollversion (In-App-Kauf, nur iOS)
+
+Zum Üben ist alles kostenlos. Die Vollversion ist ein einmaliger Kauf
+(nicht verbrauchbar, Produkt-ID `de.schule.waagemodell.vollversion`) und schaltet frei:
+Präsentationsmodus, zwei Waagen, Arbeitsblätter und Stolperstellen, die Sachkontexte
+Marktstand und Streichhölzer sowie die Waagen Comic und Realistisch.
+
+- Web-Version und Android: ohne Kauf-Plugin ist alles frei.
+- Geteilte Links öffnen immer, auch mit zwei Waagen oder Sachkontext; gesperrt ist nur
+  das Auswählen in der Oberfläche. So können Schülerinnen und Schüler Aufgaben der
+  Lehrkraft auch auf Schul-iPads bearbeiten, auf denen keine Käufe möglich sind.
+- Das Plugin liegt in `plugins/waage-store` (StoreKit 2, übernommen aus FairSeat).
+  Es fragt nur „gekauft ja/nein“ ab; geprüft wird die von Apple signierte Transaktion.
+- Der Stand wird im Gerät zwischengespeichert, damit die App offline richtig startet.
+  Eine Erstattung sperrt beim nächsten Abgleich wieder.
+
 ## Tests
 
 ```bash
@@ -190,6 +206,8 @@ src/lib/tokens.js              Farben und Schriften
 src/components/Piece.jsx       Kugeln, Blöcke, Zehnerbündel
 src/components/Waage.jsx       die Balkenwaage mit drei Gestellen
 src/lib/stile.js               Waagen-Stile: Geometrie, Farben, Ausschwingen
+src/lib/vollversion.js         Kaufstatus, Kaufen, Wiederherstellen
+plugins/waage-store/           StoreKit-2-Plugin für Capacitor (iOS)
 src/index.css                  Grundlayout und die wenigen Utility-Klassen
 tests/                         Testrahmen und Suiten
 public/                        Icons und Web-App-Manifest

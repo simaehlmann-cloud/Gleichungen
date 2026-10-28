@@ -16,14 +16,15 @@
     "ios:open": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^7.0.0",
     "lucide-react": "0.383.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "waage-store": "file:plugins/waage-store"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",
     "@capacitor/cli": "^7.0.0",
-    "@capacitor/core": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "esbuild": "^0.24.2",

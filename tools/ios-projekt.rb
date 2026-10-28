@@ -16,8 +16,13 @@ require "xcodeproj"
 projekt = Xcodeproj::Project.open(ENV.fetch("PROJEKT"))
 ziel = projekt.targets.find { |t| t.name == "App" } or abort "Ziel 'App' nicht gefunden"
 
+# Mindestversion iOS 15 (Apple verlangt sie ab April 2027, StoreKit 2 braucht sie).
+MIN_IOS = "15.0"
+projekt.build_configurations.each { |k| k.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = MIN_IOS }
+
 ziel.build_configurations.each do |konf|
   s = konf.build_settings
+  s["IPHONEOS_DEPLOYMENT_TARGET"] = MIN_IOS
   s["MARKETING_VERSION"] = ENV.fetch("VERSION")
   s["CURRENT_PROJECT_VERSION"] = ENV.fetch("BUILD")
   next unless konf.name == "Release" && ENV["TEAM_ID"].to_s != ""
