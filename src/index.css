@@ -16,3 +16,10 @@ input, select, textarea { font: inherit; color: inherit; background: #fff; }
 
 /* Auf Touchgeräten soll das Ziehen der Spielsteine nicht scrollen */
 [data-piece] { touch-action: none; }
+
+/* iPhone/iPad: Inhalt nicht unter Notch, Statusleiste und Home-Balken legen.
+   index.html setzt viewport-fit=cover; im Browser sind die Werte 0. */
+#root {
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}

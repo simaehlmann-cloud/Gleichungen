@@ -25,6 +25,7 @@ export default function (t) {
   t("Gleichsetzen wird begründet abgelehnt", txt().includes("Was müsste auf beiden Waagen allein liegen"));
 
   // Kalkülmodus
+  klick(knopf("Aufgabe"));
   klick(knopf("Eine Waage"));
   const feld = [...document.querySelectorAll("input")].find((i) => (i.value || "").includes("="));
   tippe(feld, "2x + 3 = 11");
@@ -38,6 +39,7 @@ export default function (t) {
   t("Kalkülmodus rechnet weiter", txt().includes("Ohne Waage gerechnet"));
 
   // Sachsituation
+  klick(knopf("Einstellungen"));
   const auswahl = [...document.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.textContent === "Marktstand"));
   tippe(auswahl, "markt");
   t("Sachsituation erscheint", txt().includes("Sachsituation") && txt().includes("Mehlsäcke"));

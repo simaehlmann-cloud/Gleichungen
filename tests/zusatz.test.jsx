@@ -41,6 +41,7 @@ export default function (t) {
   t("Protokoll kennzeichnet den Schritt", txt().includes("(ohne Waage)"));
 
   // Antikugeln für y
+  klick(knopf("Einstellungen"));
   klick(knopf("y-Blöcke"));
   klick(knopf("Antikugeln"));
   t("Antiteil auch für y", document.querySelectorAll('[data-drop="tray"] [data-piece="y"]').length === 2);

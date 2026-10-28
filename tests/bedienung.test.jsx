@@ -45,6 +45,7 @@ export default function (t) {
   t("Sprung zu Schritt 1", txt().includes("2x = 6") && txt().includes("Zurück zu Schritt 1"));
 
   // Zehnerbündel
+  klick(knopf("Aufgabe"));
   tippe(eingabefeld(), "x + 22 = 25");
   klick(knopf("Waage bauen"));
   t("Bündel statt Einzelteile", document.querySelectorAll('[data-bundle="10"]').length === 4);

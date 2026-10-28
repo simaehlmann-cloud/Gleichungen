@@ -18,10 +18,8 @@ export default function (t) {
   t("Eingabe erzeugt Blöcke", document.querySelectorAll('[data-drop="pan:1:L"] [data-piece="x"]').length === 3);
   t("Eingabe erzeugt Kugeln", document.querySelectorAll('[data-drop="pan:1:R"] [data-piece="k"]').length === 8);
   const winkel = () => {
-    const b = [...document.querySelectorAll("div")].map((d) => d.getAttribute("style") || "")
-      .filter((s) => s.includes("rotate(") && s.includes("linear-gradient(180deg"))[0] || "";
-    const m = /rotate\(([-\d.]+)deg\)/.exec(b);
-    return m ? parseFloat(m[1]) : null;
+    const w = document.querySelector("[data-winkel]");
+    return w ? parseFloat(w.getAttribute("data-winkel")) : null;
   };
   t("gültige Gleichung steht waagerecht", winkel() === 0);
   klick(knopf("− Kugel"));

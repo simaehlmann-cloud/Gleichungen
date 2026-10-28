@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
-  RotateCcw, Eye, Divide, X as XIcon, ArrowLeftRight, Lightbulb,
+  Eye, Divide, X as XIcon, ArrowLeftRight, Lightbulb,
   Check, Undo2, Redo2, Maximize2, Presentation, Trash2, Link2, Link2Off, Play,
   Dices, Printer, GraduationCap, Scissors, Copy, AlertTriangle, ChevronDown, ChevronUp, Link as LinkIcon,
+  Settings2, ListChecks, Plus, Minus,
 } from "lucide-react";
 
 import { C, MONO, SERIF } from "./lib/tokens.js";
@@ -13,6 +14,7 @@ import {
 import { parseEquation } from "./lib/parser.js";
 import { representable, repairSteps, levelValues, mkScale, withStep, resetUid } from "./lib/model.js";
 import { MELDUNGEN, CONTEXTS, sachtext } from "./lib/texts.js";
+import { STILE, STIL_KEYS, stilOf, stilLaden, stilSpeichern } from "./lib/stile.js";
 import { A1, A2, LEVELS, genTask, genNeg } from "./lib/tasks.js";
 import { Piece } from "./components/Piece.jsx";
 import { Waage } from "./components/Waage.jsx";
@@ -54,8 +56,14 @@ export default function WaagemodellApp() {
   const [zeigeLoesung, setZeigeLoesung] = useState(false);
   const [sheet, setSheet] = useState(null);
   const [share, setShare] = useState(null);
-  const [msg, setMsg] = useState({ t: "Zieh die Teile mit Maus oder Finger. Bei gekoppeltem Ziehen passiert dasselbe auf beiden Waagschalen.", ok: true });
+  const [msg, setMsg] = useState({ t: "Wähl oben eine Aufgabe oder bau die Waage selbst: Teile aus der Kiste auf die Schalen ziehen.", ok: true });
   const [probing, setProbing] = useState(false);
+  /* Darstellung der Waage und welcher Bereich unter der Kopfleiste offen ist.
+     Beim Start ohne Aufgabe im Link steht die Aufgabenwahl offen. */
+  const [stil, setStil] = useState(stilLaden);
+  const [panel, setPanel] = useState(() => (typeof window !== "undefined" && /[?&](st|eq)=/.test(window.location.search) ? null : "aufgabe"));
+  const waehleStil = (k) => { setStil(k); stilSpeichern(k); };
+  const umschalten = (name) => setPanel((p) => (p === name ? null : name));
   const [hl, setHl] = useState(null);
   const [enter, setEnter] = useState(null);
   const [fly, setFly] = useState([]);
@@ -67,7 +75,8 @@ export default function WaagemodellApp() {
   const startSuche = useRef(typeof window !== "undefined" ? window.location.search : "");
   const wiederhergestellt = useRef(false);
 
-  const ctx = CONTEXTS[ctxKey];
+  const ctx = useMemo(() => ({ ...CONTEXTS[ctxKey], stil }), [ctxKey, stil]);
+  const stilHoehe = stilOf(stil).hoehe;
   const active = scales.find((s) => s.id === activeId) || scales[0];
   const partner = scales.find((s) => s.id === partnerId && s.id !== active.id) || scales.find((s) => s.id !== active.id) || null;
   const hasY = mode === "lgs" || showY || scales.some((s) => !fZero(s.L.y) || !fZero(s.R.y));
@@ -93,8 +102,8 @@ export default function WaagemodellApp() {
     const anteil = ansicht === "waage" ? 1 : 0.58;
     const paneW = (landscape ? vp.w * anteil : vp.w) - 60;
     const paneH = (landscape ? vp.h - (bare ? 90 : 170) : vp.h * (twoUp ? 0.30 : 0.52) + (bare ? 60 : 0)) - 20;
-    return clamp(Math.min(paneW / (cols * 410), paneH / 325), 0.6, 2.6);
-  }, [presenting, vp, landscape, twoUp, bare, ansicht]);
+    return clamp(Math.min(paneW / (cols * 410), paneH / (stilHoehe + 7)), 0.6, 2.6);
+  }, [presenting, vp, landscape, twoUp, bare, ansicht, stilHoehe]);
   /* Eigener Faktor für die Schriftgröße im Protokoll */
   const zP = useMemo(() => {
     if (!presenting) return 1;
@@ -433,10 +442,15 @@ export default function WaagemodellApp() {
     const ns = list.map((p, i) => mkScale(i === 0 ? "I" : "II", p.L, p.R));
     setPast([]); setScales(ns); setTask(ph === "umformen" ? list.map((p) => ({ L: p.L, R: p.R })) : []);
     setActiveId(1); setMode(m); setXv(1); setYv(1); setStage(null); setPending(null); setGuessX(""); setGuessY(""); setPhase(ph); setProbing(false); setZeigeLoesung(false);
+    if (ph === "umformen") setPanel(null);
   };
   const leereWaage = (m) => {
     setup(m === "lgs" ? [{ L: P(), R: P() }, { L: P(), R: P() }] : [{ L: P(), R: P() }], m, "bauen");
     setMsg({ t: "Leere Waage im Gleichgewicht. Leg Teile auf – die Gleichung entsteht rechts mit.", ok: true });
+  };
+  const zumAufbau = () => {
+    setPhase("bauen"); setTask([]); setStage(null);
+    setMsg({ t: "Zurück im Aufbau: du kannst jede Seite wieder einzeln verändern.", ok: true });
   };
   const startUmformen = () => {
     if (scales.every((s) => panEmpty(s.L) && panEmpty(s.R))) { setMsg({ t: "Die Waage ist noch leer. Leg erst Teile auf.", ok: false }); return; }
@@ -444,6 +458,7 @@ export default function WaagemodellApp() {
     commit(ns, { t: "Ab jetzt zählt nur noch, was auf beiden Seiten gleichzeitig passiert.", ok: true });
     setTask(ns.slice(0, mode === "lgs" ? 2 : 1).map((s) => ({ L: s.L, R: s.R })));
     setPhase("umformen");
+    setPanel(null);
   };
   const build = (id, side, item, delta) => {
     const next = scales.map((s) => {
@@ -495,7 +510,7 @@ export default function WaagemodellApp() {
       });
       return cur;
     });
-    setPast([]); setScales(ns); setTask(pending.map((p) => ({ L: p.L, R: p.R }))); setActiveId(1); setPending(null); setStage(null); setPhase("umformen");
+    setPast([]); setScales(ns); setTask(pending.map((p) => ({ L: p.L, R: p.R }))); setActiveId(1); setPending(null); setStage(null); setPhase("umformen"); setPanel(null);
     setMsg({ t: "Die nötigen Umformungen stehen im Protokoll – danach liegt alles im positiven Bereich und passt auf die Waage.", ok: true });
   };
 
@@ -775,7 +790,12 @@ ${logHTML}</body></html>`;
           </header>
         )}
 
+        {/* Zone A: Kopfleiste – nur, was jede Stunde gebraucht wird */}
         <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 10 }}>
+          {!presenting && <button style={chip(panel === "aufgabe")} aria-expanded={panel === "aufgabe"} onClick={() => umschalten("aufgabe")}>
+            <ListChecks size={12} style={{ display: "inline" }} /> Aufgabe</button>}
+          <button style={btn({ opacity: past.length ? 1 : 0.45 })} onClick={undo} title="Strg+Z, in der Präsentation auch Pfeil links"><Undo2 size={12} style={{ display: "inline" }} /> zurück</button>
+          <button style={btn({ opacity: future.length ? 1 : 0.45 })} onClick={redo} title="Pfeil rechts in der Präsentation"><Redo2 size={12} style={{ display: "inline" }} /> vor</button>
           <button style={chip(presenting)} onClick={() => setPresenting(!presenting)}><Presentation size={12} style={{ display: "inline" }} /> {presenting ? "Präsentation beenden" : "Präsentation"}</button>
           {presenting && <button style={btn()} onClick={goFullscreen}><Maximize2 size={12} style={{ display: "inline" }} /> Vollbild</button>}
           {presenting && ["beides", "waage", "protokoll"].map((a) => (
@@ -787,58 +807,100 @@ ${logHTML}</body></html>`;
           {presenting && <button style={chip(compact)} onClick={() => setCompact(!compact)}>
             {compact ? <ChevronDown size={12} style={{ display: "inline" }} /> : <ChevronUp size={12} style={{ display: "inline" }} />} Bedienung {compact ? "einblenden" : "ausblenden"}
           </button>}
-          {bare ? null : phase === "bauen"
-            ? <button style={btn({ background: C.ok, color: "#fff", borderColor: C.ok })} onClick={startUmformen}>Umformen starten</button>
-            : <button style={chip(coupled)} onClick={() => setCoupled(!coupled)}>{coupled ? <Link2 size={12} style={{ display: "inline" }} /> : <Link2Off size={12} style={{ display: "inline" }} />} {coupled ? "beidseitig" : "frei"}</button>}
-          {!bare && <button style={btn()} onClick={() => leereWaage(mode)}>leere Waage</button>}
-          <button style={btn({ opacity: past.length ? 1 : 0.45 })} onClick={undo} title="Strg+Z, in der Präsentation auch Pfeil links"><Undo2 size={12} style={{ display: "inline" }} /> zurück</button>
-          <button style={btn({ opacity: future.length ? 1 : 0.45 })} onClick={redo} title="Pfeil rechts in der Präsentation"><Redo2 size={12} style={{ display: "inline" }} /> vor</button>
-          {!bare && <button style={chip(kalkuel)} onClick={() => setKalkuel(!kalkuel)} title="Rechnen ohne die Grenzen des Waagemodells">Kalkül {kalkuel ? "an" : "aus"}</button>}
-          {!bare && <button style={chip(anti)} onClick={() => setAnti(!anti)} title="Rote Antikugeln: eine Kugel und eine Antikugel heben sich auf">Antikugeln {anti ? "an" : "aus"}</button>}
-          {!bare && mode !== "lgs" && <button style={chip(showY)} onClick={() => setShowY(!showY)} title="Stellt zusätzlich violette y-Blöcke bereit">y-Blöcke {showY ? "an" : "aus"}</button>}
-          {!presenting && <>
-            <select style={btn()} value={ctxKey} onChange={(e) => setCtxKey(e.target.value)}>
-              {Object.entries(CONTEXTS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
-            </select>
-            <button style={chip(mode === "einzeln")} onClick={() => leereWaage("einzeln")}>Eine Waage</button>
-            <button style={chip(mode === "lgs")} onClick={() => leereWaage("lgs")}>Zwei Waagen</button>
-            <select style={btn()} value="" onChange={(e) => load(mode, +e.target.value)}>
-              <option value="" disabled>Aufgabe wählen …</option>
-              {(mode === "einzeln" ? A1 : A2).map((a, i) => <option key={i} value={i}>{a.name}</option>)}
-            </select>
-            {phase === "bauen" && <button style={chip(edit)} onClick={() => setEdit(!edit)}>Bestücken</button>}
-            <button style={btn()} onClick={teilen} title="Erzeugt einen Link, der genau diese Aufgabe öffnet"><LinkIcon size={12} style={{ display: "inline" }} /> Link</button>
-            <button style={chip(showTeacher)} onClick={() => setShowTeacher(!showTeacher)}><GraduationCap size={12} style={{ display: "inline" }} /> Lehrkraft{log.length ? ` (${log.length})` : ""}</button>
-          </>}
+          {!presenting && <button style={{ ...chip(panel === "einstellungen"), marginLeft: "auto" }} aria-expanded={panel === "einstellungen"} onClick={() => umschalten("einstellungen")}>
+            <Settings2 size={12} style={{ display: "inline" }} /> Einstellungen{log.length ? ` · ${log.length}` : ""}</button>}
         </div>
 
-        {!presenting && (
-          <div className="flex flex-wrap gap-2" style={{ marginBottom: 12 }}>
-            <div style={{ ...card, flex: "1 1 320px" }}>
-              <div style={eyebrow}>Aufgabengenerator</div>
+        {panel === "aufgabe" && !presenting && (
+          <div style={{ ...card, marginBottom: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+            <div>
+              <div style={eyebrow}>Aufgabe wählen</div>
               <div className="flex flex-wrap items-center gap-2">
-                <select style={btn()} value={level} onChange={(e) => setLevel(+e.target.value)}>
+                <button style={chip(mode === "einzeln")} onClick={() => leereWaage("einzeln")}>Eine Waage</button>
+                <button style={chip(mode === "lgs")} onClick={() => leereWaage("lgs")}>Zwei Waagen</button>
+                <select style={btn()} value="" onChange={(e) => load(mode, +e.target.value)} aria-label="Beispielaufgabe">
+                  <option value="" disabled>Beispiel …</option>
+                  {(mode === "einzeln" ? A1 : A2).map((a, i) => <option key={i} value={i}>{a.name}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
+                <select style={btn()} value={level} onChange={(e) => setLevel(+e.target.value)} aria-label="Niveaustufe">
                   {LEVELS.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
                 <button style={btn({ background: C.ink, color: C.paper, borderColor: C.ink })} onClick={() => zufall(level)}>
                   <Dices size={12} style={{ display: "inline" }} /> Zufallsaufgabe
                 </button>
-                <span style={{ fontSize: 12.5, color: C.ink2, flex: "1 1 160px" }}>{(LEVELS.find((l) => l.id === level) || {}).hint}</span>
               </div>
+              <div style={{ fontSize: 12.5, color: C.ink2, marginTop: 6 }}>{(LEVELS.find((l) => l.id === level) || {}).hint}</div>
             </div>
-            <div style={{ ...card, flex: "1 1 320px" }}>
+            <div>
               <div style={eyebrow}>Gleichung eintippen</div>
               <div className="flex flex-wrap items-center gap-2">
                 <input value={eq1} onChange={(e) => setEq1(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buildFromInput()}
-                  placeholder="z. B. 2(x + 3) = 4x − 2"
+                  placeholder="z. B. 2(x + 3) = 4x − 2" aria-label="Gleichung"
                   style={{ flex: "1 1 180px", fontFamily: MONO, fontSize: 14, padding: "8px 10px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />
                 {mode === "lgs" && <input value={eq2} onChange={(e) => setEq2(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buildFromInput()}
-                  placeholder="zweite Gleichung"
+                  placeholder="zweite Gleichung" aria-label="zweite Gleichung"
                   style={{ flex: "1 1 180px", fontFamily: MONO, fontSize: 14, padding: "8px 10px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />}
+              </div>
+              <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
                 <button style={btn({ background: C.ink, color: C.paper, borderColor: C.ink })} onClick={buildFromInput}><Play size={12} style={{ display: "inline" }} /> Waage bauen</button>
                 {pending && <button style={btn({ borderColor: C.brassDark, color: C.brassDark })} onClick={fixPending}>waagentauglich machen</button>}
+                <button style={btn()} onClick={() => leereWaage(mode)} title="Leere Waage im Gleichgewicht, Aufbau Schale für Schale">leere Waage</button>
+                <button style={btn()} onClick={teilen} title="Erzeugt einen Link, der genau diese Aufgabe öffnet"><LinkIcon size={12} style={{ display: "inline" }} /> Link</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {panel === "einstellungen" && !presenting && (
+          <div style={{ ...card, marginBottom: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+            <div>
+              <div style={eyebrow}>Waage</div>
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Stil der Waage">
+                {STIL_KEYS.map((k) => <button key={k} style={chip(stil === k)} aria-pressed={stil === k} onClick={() => waehleStil(k)}>{STILE[k].name}</button>)}
+              </div>
+              <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
+                <select style={btn()} value={ctxKey} onChange={(e) => setCtxKey(e.target.value)} aria-label="Sachkontext">
+                  {Object.entries(CONTEXTS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <div style={eyebrow}>Erweiterungen</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button style={chip(anti)} onClick={() => setAnti(!anti)} title="Rote Antikugeln: eine Kugel und eine Antikugel heben sich auf">Antikugeln {anti ? "an" : "aus"}</button>
+                {mode !== "lgs" && <button style={chip(showY)} onClick={() => setShowY(!showY)} title="Stellt zusätzlich y-Blöcke bereit">y-Blöcke {showY ? "an" : "aus"}</button>}
+                <button style={chip(kalkuel)} onClick={() => setKalkuel(!kalkuel)} title="Rechnen ohne die Grenzen des Waagemodells">Kalkül {kalkuel ? "an" : "aus"}</button>
+                <button style={chip(!coupled)} onClick={() => setCoupled(!coupled)} title="Ein Zug wirkt dann nur auf die Schale, auf der er passiert. Die Waage kippt, das Protokoll markiert den Schritt.">
+                  {coupled ? <Link2 size={12} style={{ display: "inline" }} /> : <Link2Off size={12} style={{ display: "inline" }} />} Einseitige Züge {coupled ? "aus" : "an"}</button>
+              </div>
+            </div>
+            <div>
+              <div style={eyebrow}>Lehrkraft</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button style={chip(hintStyle === "frage")} onClick={() => setHintStyle(hintStyle === "frage" ? "direkt" : "frage")}
+                  title="Fragend regt zum Nachdenken an, direkt sagt sofort, was zu tun ist">
+                  Hinweise: {hintStyle === "frage" ? "fragend" : "direkt"}
+                </button>
+                <button style={chip(showTeacher)} onClick={() => setShowTeacher(!showTeacher)}><GraduationCap size={12} style={{ display: "inline" }} /> Lehrkraft{log.length ? ` (${log.length})` : ""}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Zone B: Phase – ersetzt Bestücken, zurück zum Aufbau und den Kopplungsschalter */}
+        {!bare && (
+          <div role="group" aria-label="Phase" style={{ display: "inline-flex", gap: 2, padding: 3, marginBottom: 12, background: "#fff", border: `1px solid ${C.grid}`, borderRadius: 999 }}>
+            {[["bauen", "1 · Aufbauen"], ["umformen", "2 · Umformen"]].map(([ph, lbl]) => (
+              <button key={ph} aria-pressed={phase === ph}
+                onClick={() => { if (phase === ph) return; if (ph === "bauen") zumAufbau(); else startUmformen(); }}
+                style={{
+                  border: "none", borderRadius: 999, padding: presenting ? "8px 18px" : "6px 16px", cursor: "pointer",
+                  fontFamily: MONO, fontSize: 12.5, fontWeight: 600,
+                  background: phase === ph ? C.ink : "transparent", color: phase === ph ? C.paper : C.ink2,
+                }}>{lbl}</button>
+            ))}
           </div>
         )}
 
@@ -932,7 +994,7 @@ ${logHTML}</body></html>`;
                 const az = anzeige(s);
                 return (
                 <div key={s.id} style={{ flex: `1 1 ${400 * z}px` }}>
-                  <Waage scale={s} xv={az.x} yv={az.y} hint={az.hint} z={z} ctx={ctx} hot={hot} stage={stage}
+                  <Waage scale={s} xv={az.x} yv={az.y} hint={az.hint} z={z} ctx={ctx} stil={stil} hot={hot} stage={stage}
                     drag={dragView} coupled={coupled && phase === "umformen"} hl={hl} setHl={setHl} enter={enter}
                     broken={s.prot.some((r) => r.bad)} phase={phase} kalkuel={kalkuel}
                     active={scales.length > 1 && s.id === activeId}
@@ -1014,6 +1076,7 @@ ${logHTML}</body></html>`;
                   <span style={{ fontSize: 13.5, flex: "1 1 220px" }}>
                     Teile aus der Kiste auf die Schalen ziehen – jede Seite für sich. Rechts wächst die Gleichung mit.
                   </span>
+                  <button style={chip(edit)} onClick={() => setEdit(!edit)} title="Zähler für jede Schale einblenden">Bestücken</button>
                   <button style={btn({ background: C.ok, color: "#fff", borderColor: C.ok })} onClick={startUmformen}>Umformen starten</button>
                 </div>
                 <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginTop: 8, borderTop: `1px dashed ${C.grid}`, paddingTop: 8 }}>
@@ -1032,15 +1095,20 @@ ${logHTML}</body></html>`;
               </div>
             )}
 
-            <div style={{ ...card, marginTop: 10, opacity: phase === "bauen" ? 0.45 : 1, pointerEvents: phase === "bauen" ? "none" : "auto" }}>
+            {/* Zone C: Umformungsleiste – jede Taste ist genau eine Äquivalenzumformung */}
+            {phase === "umformen" && <div style={{ ...card, marginTop: 10 }}>
               <div style={eyebrow}>Auf beiden Seiten zugleich{scales.length > 1 ? ` — Waage (${active.label})` : ""}</div>
               <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: 8 }}>
                 <span style={{ fontFamily: MONO, fontSize: 12 }}>Anzahl</span>
-                <input type="number" min={1} max={99} value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  onBlur={() => setAmount(String(amt))}
-                  aria-label="Anzahl der Teile je Umformung"
-                  style={{ width: 54, fontFamily: MONO, fontSize: 13, padding: "4px 6px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />
+                <span className="flex items-center" style={{ gap: 2 }}>
+                  <button style={btn({ padding: "4px 7px" })} aria-label="Anzahl verringern" onClick={() => setAmount(String(Math.max(1, amt - 1)))}><Minus size={12} /></button>
+                  <input type="number" min={1} max={99} value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    onBlur={() => setAmount(String(amt))}
+                    aria-label="Anzahl der Teile je Umformung"
+                    style={{ width: 48, textAlign: "center", fontFamily: MONO, fontSize: 13, padding: "4px 4px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />
+                  <button style={btn({ padding: "4px 7px" })} aria-label="Anzahl erhöhen" onClick={() => setAmount(String(Math.min(99, amt + 1)))}><Plus size={12} /></button>
+                </span>
                 {[{ it: "k", lbl: ctx.unit }, { it: "x", lbl: ctx.xName }, ...(hasY ? [{ it: "y", lbl: ctx.yName }] : [])].map((b) => (
                   <span key={b.it} className="flex items-center gap-1">
                     <button title={`${amt} ${b.lbl} auf beiden Seiten wegnehmen`} style={btn({ borderColor: C.neg, color: C.neg })} onClick={() => bothSides(activeId, b.it, -amt)}>− {b.lbl}</button>
@@ -1052,8 +1120,6 @@ ${logHTML}</body></html>`;
                 <button style={btn()} onClick={() => startStage("div")}><Divide size={11} style={{ display: "inline" }} /> in {amtSplit} Haufen teilen</button>
                 <button style={btn()} onClick={() => startStage("mul")}><XIcon size={11} style={{ display: "inline" }} /> {amtSplit}-mal nebeneinander</button>
                 <button style={btn()} onClick={swapSides}><ArrowLeftRight size={11} style={{ display: "inline" }} /> Seiten tauschen</button>
-                <button style={btn()} onClick={() => { setPhase("bauen"); setTask([]); setMsg({ t: "Zurück im Aufbau: du kannst jede Seite wieder einzeln verändern.", ok: true }); }}>zurück zum Aufbau</button>
-                <button style={btn()} onClick={() => zufall(level)}><RotateCcw size={11} style={{ display: "inline" }} /> neue Aufgabe</button>
               </div>
               {scales.length >= 2 && partner && (
                 <div style={{ borderTop: `1px dashed ${C.grid}`, marginTop: 10, paddingTop: 10 }}>
@@ -1070,7 +1136,7 @@ ${logHTML}</body></html>`;
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             <div style={{ ...card, marginTop: 10, display: phase === "bauen" || bare ? "none" : "block" }}>
               <div style={eyebrow}>Wie schwer ist ein {ctx.xName}?</div>
@@ -1180,8 +1246,8 @@ ${logHTML}</body></html>`;
 
             {!presenting && (
               <div style={{ marginTop: 10, fontSize: 12.5, color: C.ink2, lineHeight: 1.5 }}>
-                <strong style={{ color: C.ink }}>Legende:</strong> {ctx.unit} = 1 · {ctx.xName} = {ctx.sym.x}{hasY ? ` · ${ctx.yName} = ${ctx.sym.y}` : ""}.
-                Tippen nimmt beidseitig weg, Strg/Cmd + Z geht zurück.
+                <strong style={{ color: C.ink }}>Legende:</strong> {ctx.unit} = 1 · {ctx.xName} = {ctx.sym.x}{hasY ? ` · ${ctx.yName} = ${ctx.sym.y}` : ""}.{" "}
+                {coupled ? "Tippen nimmt beidseitig weg" : "Einseitige Züge sind eingeschaltet"}, Strg/Cmd + Z geht zurück.
               </div>
             )}
           </div>}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Datenschutz-Manifest der App. Das Waagemodell läuft vollständig offline,
+     sammelt keine Daten und verfolgt niemanden. Den Stil der Waage merkt sich
+     die Web-App im localStorage des WebViews; das ist kein UserDefaults-Zugriff
+     der App. Capacitor bringt für seine eigenen Zugriffe ein eigenes Manifest mit. -->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+</dict>
+</plist>
