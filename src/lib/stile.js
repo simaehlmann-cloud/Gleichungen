@@ -25,14 +25,14 @@ const STILE = {
   },
 };
 const STIL_KEYS = Object.keys(STILE);
-const stilOf = (k) => STILE[k] || STILE.klassisch;
+const stilOf = (k) => STILE[k] || STILE.comic;
 
 const STIL_SPEICHER = "waagemodell-stil";
 function stilLaden() {
   try {
     const v = typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem(STIL_SPEICHER) : null;
-    return STILE[v] ? v : "klassisch";
-  } catch (e) { return "klassisch"; }
+    return STILE[v] ? v : "comic";
+  } catch (e) { return "comic"; }
 }
 function stilSpeichern(k) {
   try { if (typeof window !== "undefined" && window.localStorage) window.localStorage.setItem(STIL_SPEICHER, k); } catch (e) { /* privater Modus */ }

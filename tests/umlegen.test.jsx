@@ -7,8 +7,9 @@ import * as AppModul from "../src/WaagemodellApp.jsx";
 export default function (t) {
   makeDom();
   const root = createRoot(document.getElementById("root"));
-  const { txt, ziehe } = tools(act);
+  const { txt, ziehe, selbst } = tools(act);
   act(() => root.render(React.createElement(AppModul.default)));
+  selbst();
   ziehe("x", "pan:1:L"); ziehe("k", "pan:1:L"); ziehe("k", "pan:1:L");
   t("Ausgangslage steht", txt().includes("x + 2 = 0"));
   // Teil von links nach rechts schieben (im Aufbau erlaubt)

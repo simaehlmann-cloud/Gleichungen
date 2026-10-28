@@ -46,7 +46,9 @@ export default async function (t) {
 
   klick(knopf("Einstellungen"));
   klick(knopf("Comic"));
-  t("Zusatzstil gesperrt", document.querySelector("[data-waage]").getAttribute("data-waage") === "klassisch");
+  t("Comic ist frei", document.querySelector("[data-waage]").getAttribute("data-waage") === "comic");
+  klick(knopf("Realistisch"));
+  t("realistische Waage gesperrt", document.querySelector("[data-waage]").getAttribute("data-waage") === "comic" && txt().includes("Realistische Waage (Laborwaage mit Zeiger) gehört zur Vollversion"));
   klick(knopf("Aufgabe"));
   klick(knopf("Zwei Waagen"));
   t("Zwei Waagen gesperrt", txt().includes("Zwei Waagen (Gleichungssysteme) gehört zur Vollversion") && document.querySelectorAll("[data-waage]").length === 1);

@@ -45,6 +45,12 @@ function noteStr(n, sym = SYM) {
   if (n.op === "add") { const a = Math.abs(n.n); return `${n.n < 0 ? "−" : "+"} ${a === 1 && s ? s : a + s}`; }
   if (n.op === "mul") return `· ${n.n}${n.frei ? " (ohne Waage)" : ""}`;
   if (n.op === "div") return `: ${n.n}${n.frei ? " (ohne Waage)" : ""}`;
+  if (n.op === "addm") {
+    return ["x", "y", "k"].filter((k) => n.d[k]).map((k) => {
+      const a = Math.abs(n.d[k]), s2 = k === "k" ? "" : sym[k];
+      return `${n.d[k] < 0 ? "−" : "+"} ${a === 1 && s2 ? s2 : a + s2}`;
+    }).join(" ");
+  }
   if (n.op === "swap") return "Seiten tauschen";
   if (n.op === "one") return `nur ${n.side === "L" ? "links" : "rechts"} verändert`;
   return "";

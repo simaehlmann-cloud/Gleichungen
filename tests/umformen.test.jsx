@@ -12,7 +12,7 @@ export default function (t) {
   const { txt, knopf, klick, tippe, eingabefeld } = tools(act);
   act(() => root.render(React.createElement(App)));
 
-  t("Start: leere Waage im Gleichgewicht", txt().includes("leer") && txt().includes("im Gleichgewicht"));
+  t("Start: Startseite mit beiden Wegen", txt().includes("Gleichungen") && txt().includes("Lineare Gleichungssysteme"));
   tippe(eingabefeld(), "3x + 2 = x + 8");
   klick(knopf("Waage bauen"));
   t("Eingabe erzeugt Blöcke", document.querySelectorAll('[data-drop="pan:1:L"] [data-piece="x"]').length === 3);

@@ -153,13 +153,14 @@ function GestellReal({ S, ends, winkel, uid }) {
 const GESTELL = { klassisch: GestellKlassisch, comic: GestellComic, real: GestellReal };
 
 /* ================= Waage ================= */
-function Waage({ scale, xv, yv, z, ctx, stil = "klassisch", active, onFocus, onPieceDown, onPieceActivate, hot, stage, drag, coupled, hl, setHl, enter, broken, phase, hint, kalkuel }) {
+function Waage({ scale, xv, yv, z, ctx, stil = "comic", ohneLabel = false, active, onFocus, onPieceDown, onPieceActivate, hot, stage, drag, coupled, hl, setHl, enter, broken, phase, hint, kalkuel }) {
   const S = stilOf(stil);
   const haengt = S.hang > 0;
   const cx = 200, py = S.pivotY;
   const staged = stage && stage.scaleId === scale.id;
   const diff = panVal(scale.L, xv, yv) - panVal(scale.R, xv, yv);
-  const ziel = staged ? 0 : Math.max(-11, Math.min(11, diff * 2.2));
+  /* Schon eine Kugel Unterschied soll deutlich sichtbar kippen: mindestens 5°. */
+  const ziel = staged || Math.abs(diff) < 1e-9 ? 0 : Math.sign(diff) * Math.max(5, Math.min(11, Math.abs(diff) * 2.2));
   const winkel = useFeder(ziel, S.feder);
   const a = rad(winkel);
   const ends = [[cx - Math.cos(a) * S.arm, py + Math.sin(a) * S.arm], [cx + Math.cos(a) * S.arm, py - Math.sin(a) * S.arm]];
@@ -230,10 +231,13 @@ function Waage({ scale, xv, yv, z, ctx, stil = "klassisch", active, onFocus, onP
     );
   };
 
+  /* Relationszeichen beim Lösungswert: nach einem einseitigen Zug steht da eine Ungleichung. */
+  const rel = staged || balanced ? "=" : diff > 0 ? ">" : "<";
   const status = staged ? (stage.type === "div" ? `in ${stage.n} gleiche Haufen geteilt` : `${stage.n}-mal nebeneinander`)
-    : broken ? "nicht mehr äquivalent zur Aufgabe"
-      : hint ? hint
-        : balanced ? "im Gleichgewicht" : diff > 0 ? "links schwerer" : "rechts schwerer";
+    : broken && balanced ? "waagerecht – aber keine Äquivalenzumformung"
+      : broken ? (diff > 0 ? "links schwerer: Ungleichung" : "rechts schwerer: Ungleichung")
+        : hint ? hint
+          : balanced ? "im Gleichgewicht" : diff > 0 ? "links schwerer" : "rechts schwerer";
   const textY = haengt ? S.hoehe - 64 : py + 52;
 
   return (
@@ -255,9 +259,9 @@ function Waage({ scale, xv, yv, z, ctx, stil = "klassisch", active, onFocus, onP
       <div style={{
         position: "absolute", left: (cx - 120) * z, top: (textY + 17) * z, width: 240 * z, textAlign: "center",
         fontFamily: MONO, fontSize: 14 * z, fontWeight: 700, color: S.text,
-      }}>{eqOf(scale.L, scale.R, ctx.sym)}</div>
+      }} data-relation={rel}>{termStr(scale.L, ctx.sym)} {rel === "=" ? "=" : <span style={{ color: S.neg }}>{rel}</span>} {termStr(scale.R, ctx.sym)}</div>
       <div style={{ position: "absolute", left: 12 * z, top: 8 * z, fontFamily: SERIF, fontSize: 20 * z, fontWeight: 700, color: S.akzent }}>
-        ({scale.label})
+        {scale.label && !ohneLabel ? `(${scale.label})` : ""}
         {phase === "bauen" && <span style={{ fontFamily: MONO, fontSize: 11 * z, color: S.text2, paddingLeft: 6 }}>Aufbau</span>}
         {kalkuel && <span style={{ fontFamily: MONO, fontSize: 11 * z, color: S.neg, paddingLeft: 6 }} title="Die Grenzen des Waagemodells sind aufgehoben">Kalkül</span>}
       </div>

@@ -10,8 +10,16 @@ const MELDUNGEN = {
     direkt: "Dort liegt nichts mehr, was du wegnehmen könntest.",
   },
   einseitig: {
-    frage: "Schau auf den Balken: Was ist mit dem Gleichgewicht passiert? Und gilt die Gleichung von vorhin dann noch?",
-    direkt: "Nur eine Seite verändert – die Waage kippt und es steht eine andere Gleichung da. Zum Umformen musst du beide Seiten gleich behandeln.",
+    frage: "Die Waage ist gekippt – aus der Gleichung ist eine Ungleichung geworden. Was musst du auf der anderen Seite tun, damit sie wieder im Gleichgewicht ist?",
+    direkt: "Nur eine Seite verändert: Die Waage kippt, aus der Gleichung wird eine Ungleichung. Nimm auf der anderen Seite dasselbe weg (oder leg dasselbe dazu).",
+  },
+  "einseitig-ungleich": {
+    frage: "Die Waage ist wieder waagerecht – aber hast du links und rechts dasselbe weggenommen? Vergleiche die beiden Schalen mit vorher.",
+    direkt: "Waagerecht, aber links und rechts wurde Verschiedenes verändert. Das ist keine Äquivalenzumformung – geh mit „zurück“ einen Schritt zurück.",
+  },
+  "erst-ausgleichen": {
+    frage: "Die Waage ist gerade gekippt. Was müsstest du zuerst tun, bevor du weiter umformst?",
+    direkt: "Bring die Waage zuerst wieder ins Gleichgewicht – oder nimm den letzten Zug mit „zurück“ zurück.",
   },
   hinueber: {
     frage: "Überleg kurz: Wird die linke Schale leichter, wenn das Teil nach rechts wandert? Und was passiert mit der rechten? Was müsstest du tun, damit beide gleich viel verlieren?",

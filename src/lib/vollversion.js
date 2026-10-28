@@ -17,7 +17,7 @@ const FUNKTIONEN = {
   lgs: "Zwei Waagen (Gleichungssysteme)",
   lehrkraft: "Arbeitsblätter und Stolperstellen",
   kontext: "Sachkontexte Marktstand und Streichhölzer",
-  stil: "Waagen Comic und Realistisch",
+  stil: "Realistische Waage (Laborwaage mit Zeiger)",
 };
 
 /* Tests können ein Ersatz-Plugin über window.__waageStore setzen. */
@@ -82,7 +82,10 @@ function useVollversion() {
       else if (erg === "pending") setHinweis({ t: "Der Kauf wartet noch auf Bestätigung, etwa durch „Kaufen anfragen“ in der Familie. Die Vollversion schaltet sich dann von selbst frei.", ok: true });
       else setHinweis({ t: "Kauf abgebrochen. Es wurde nichts berechnet.", ok: true });
     } catch (e) {
-      setHinweis({ t: `Der Kauf hat nicht geklappt: ${String((e && e.message) || e)}. Bitte später noch einmal versuchen.`, ok: false });
+      const text = String((e && e.message) || e);
+      setHinweis(/product not found/i.test(text)
+        ? { t: "Der App Store kennt die Vollversion noch nicht. Das Produkt ist in App Store Connect noch nicht vollständig eingerichtet oder noch nicht freigegeben – bitte später noch einmal versuchen.", ok: false, code: "kein-produkt" }
+        : { t: `Der Kauf hat nicht geklappt: ${text}. Bitte später noch einmal versuchen.`, ok: false });
     } finally { if (lebt.current) setBeschaeftigt(false); }
   }, [s, beschaeftigt, setzen]);
 

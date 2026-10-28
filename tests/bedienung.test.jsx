@@ -9,8 +9,9 @@ export default function (t) {
   const { fehler } = makeDom();
   const App = AppModul.default;
   const root = createRoot(document.getElementById("root"));
-  const { txt, knopf, klick, tippe, taste, ziehe, eingabefeld } = tools(act);
+  const { txt, knopf, klick, tippe, taste, ziehe, eingabefeld, selbst } = tools(act);
   act(() => root.render(React.createElement(App)));
+  selbst();
 
   // Aufbau per Ziehen
   ziehe("x", "pan:1:L"); ziehe("x", "pan:1:L");
@@ -51,6 +52,8 @@ export default function (t) {
   t("Bündel statt Einzelteile", document.querySelectorAll('[data-bundle="10"]').length === 4);
   const buendel = document.querySelector('[data-bundle="10"]');
   taste(buendel, "Enter");
-  t("Bündel nimmt zehn weg", txt().includes("x + 12 = 15"));
+  t("Bündel nimmt zehn weg (einseitig: Ungleichung)", txt().includes("x + 12 < 25"));
+  taste(document.querySelector('[data-drop="pan:1:R"] [data-bundle="10"]'), "Enter");
+  t("Bündel rechts gleicht aus", txt().includes("x + 12 = 15") && txt().includes("− 10"));
   t("keine Konsolenfehler", fehler.length === 0);
 }

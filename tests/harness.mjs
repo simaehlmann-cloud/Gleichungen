@@ -2,7 +2,10 @@
    Jede Testdatei exportiert eine Funktion, die `t` bekommt. */
 import { JSDOM } from "jsdom";
 
-export function makeDom(search = "") {
+/* Die Funktionssuiten prüfen mit eingeblendetem Rechenweg und klassischer Waage.
+   Die tatsächlichen Voreinstellungen (Rechenweg aus, Comic-Waage, Startseite)
+   prüft startseite.test.jsx mit { frisch: true }. */
+export function makeDom(search = "", { frisch = false } = {}) {
   const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
     pretendToBeVisual: true,
     url: "http://localhost/" + search,
@@ -23,6 +26,10 @@ export function makeDom(search = "") {
     }
     dom.window.PointerEvent = PointerEventErsatz;
     setze("PointerEvent", PointerEventErsatz);
+  }
+  if (!frisch) {
+    dom.window.localStorage.setItem("waagemodell-rechts", "1");
+    dom.window.localStorage.setItem("waagemodell-stil", "klassisch");
   }
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const fehler = [];
@@ -54,6 +61,8 @@ export function tools(act) {
     act(() => window.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, clientX: 300, clientY: 200 })));
     act(() => window.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true, clientX: 300, clientY: 200 })));
   };
+  /* Von der Startseite auf die leere Arbeitsfläche (eine bzw. zwei Waagen) */
+  const selbst = (lgs = false) => klick(alle("Selbst aufbauen")[lgs ? 1 : 0]);
   const eingabefeld = () => [...document.querySelectorAll("input")].find((i) => (i.value || "").includes("="));
-  return { txt, alle, knopf, klick, tippe, taste, ziehe, eingabefeld };
+  return { txt, alle, knopf, klick, tippe, taste, ziehe, eingabefeld, selbst };
 }

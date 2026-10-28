@@ -1,4 +1,4 @@
-import { F, fSub, fDiv, fVal, fZero, isInt, lcm, KIND, panAdd, panScale } from "./fraction.js";
+import { F, fSub, fDiv, fVal, fZero, isInt, lcm, KIND, panAdd, panScale, panEmpty, panVal } from "./fraction.js";
 
 const representable = (L, R) => [L, R].every((p) => KIND.every((k) => isInt(p[k]) && fVal(p[k]) >= 0));
 function repairSteps(L, R) {
@@ -39,4 +39,39 @@ const withStep = (s, L, R, note, bad) => {
   return { ...s, L, R, prot: [...prot, { L, R, note: null }] };
 };
 
-export { representable, repairSteps, levelValues, mkScale, withStep, resetUid };
+/* ---- Einseitige Züge ----
+   Ein Zug auf nur einer Schale kippt die Waage: aus der Gleichung wird eine
+   Ungleichung. Der letzte äquivalente Stand bleibt als "anker" an der Waage.
+   Sobald auf beiden Seiten insgesamt dasselbe weggenommen bzw. dazugelegt ist,
+   wird daraus genau eine Äquivalenzumformung im Protokoll ("| − 2").
+   Solange das nicht der Fall ist, schreibt das Protokoll nichts. */
+const panSub = (p, q) => panAdd(p, panScale(q, F(-1)));
+const panGleich = (p, q) => KIND.every((k) => fZero(fSub(p[k], q[k])));
+
+/* Notiz für eine Änderung d, die auf beiden Seiten gleich ist */
+function deltaNote(d) {
+  const kinds = KIND.filter((k) => !fZero(d[k]));
+  if (kinds.length === 1) return { op: "add", kind: kinds[0], n: fVal(d[kinds[0]]) };
+  return { op: "addm", d: { x: fVal(d.x), y: fVal(d.y), k: fVal(d.k) } };
+}
+
+function einseitig(s, side, d) {
+  const anker = s.anker || { L: s.L, R: s.R };
+  const L = side === "L" ? panAdd(s.L, d) : s.L;
+  const R = side === "R" ? panAdd(s.R, d) : s.R;
+  const dL = panSub(L, anker.L), dR = panSub(R, anker.R);
+  if (panEmpty(dL) && panEmpty(dR)) return { scale: { ...s, L, R, anker: null }, art: "zurueck" };
+  if (panGleich(dL, dR)) {
+    const note = deltaNote(dL);
+    return { scale: withStep({ ...s, L: anker.L, R: anker.R, anker: null }, L, R, note), art: "aequivalent", note };
+  }
+  return { scale: { ...s, L, R, anker }, art: "offen", links: !panEmpty(dL), rechts: !panEmpty(dR) };
+}
+
+/* Relationszeichen beim eingestellten Wert: =, < oder > */
+function relation(L, R, xv, yv) {
+  const d = panVal(L, xv, yv) - panVal(R, xv, yv);
+  return Math.abs(d) < 1e-9 ? "=" : d > 0 ? ">" : "<";
+}
+
+export { representable, repairSteps, levelValues, mkScale, withStep, resetUid, einseitig, relation, panSub };
