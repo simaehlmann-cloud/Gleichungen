@@ -80,6 +80,11 @@ jobs:
           npm ci
           npm run build
           npx cap add ios
+          # Apple nimmt ab April 2027 nur noch Apps ab iOS 15 an (ITMS-90068);
+          # das Capacitor-7-Template steht auf 14. Vor "cap sync" umstellen,
+          # damit pod install die Pods gleich mit 15 anlegt.
+          sed -i '' "s/^platform :ios, '[0-9.]*'/platform :ios, '15.0'/" ios/App/Podfile
+          grep -q "^platform :ios, '15.0'" ios/App/Podfile || { echo "::error::Podfile ließ sich nicht auf iOS 15 umstellen."; exit 1; }
           npx cap sync ios
 
       - name: Icon, Startbild, Info.plist und Manifest einsetzen
