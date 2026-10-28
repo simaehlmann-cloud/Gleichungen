@@ -30,6 +30,12 @@ jobs:
         with:
           packages: 'platform-tools'
 
+      # Wie bei FairSeat: Plattform und Build-Tools ausdrücklich holen, statt
+      # auf das automatische Nachladen durch Gradle zu vertrauen.
+      # Capacitor 7: compileSdk 35, AGP 8.7 nutzt Build-Tools 34/35.
+      - name: SDK-Pakete nachziehen
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "build-tools;34.0.0"
+
       - name: Abhängigkeiten installieren
         run: npm ci
 
@@ -45,7 +51,13 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          LOG="$RUNNER_TEMP/gradle.log"
+          if ! ./gradlew assembleDebug --no-daemon --stacktrace > "$LOG" 2>&1; then
+            # Die Ursache steht bei Gradle unter "What went wrong" – als Annotation ausgeben.
+            sed -n '/What went wrong/,/Try:/p' "$LOG" | grep -v '^\s*$' | head -12 | while IFS= read -r z; do echo "::error title=Gradle::$z"; done
+            tail -80 "$LOG"; exit 1
+          fi
+          tail -15 "$LOG"
 
       - name: APK hochladen
         uses: actions/upload-artifact@v6

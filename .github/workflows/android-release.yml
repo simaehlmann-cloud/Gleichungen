@@ -31,6 +31,8 @@ jobs:
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
+      - name: SDK-Pakete nachziehen
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "build-tools;34.0.0"
 
       - run: npm ci
       - run: npm run build

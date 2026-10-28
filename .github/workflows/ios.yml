@@ -121,7 +121,7 @@ jobs:
       # ---- Signierter Build für den App Store ----
       # Dieselben Secrets wie bei FairSeat; neu ist nur das Profil für diese App:
       #   IOS_CERTIFICATE_P12_BASE64, IOS_CERTIFICATE_PASSWORD   (von FairSeat)
-      #   IOS_TEAM_ID, IOS_SIGNING_IDENTITY                     (von FairSeat)
+      #   IOS_TEAM_ID, IOS_SIGNING_IDENTITY                     (optional, nur zur Kontrolle)
       #   IOS_PROVISIONING_PROFILE                              (NEU: App-Store-Profil der Waagemodell-App-ID, base64)
       - name: Signierschlüssel einrichten
         id: signieren
@@ -129,6 +129,8 @@ jobs:
           ZERT_B64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
           ZERT_PW: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           PROFIL_B64: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          TEAM_SECRET: ${{ secrets.IOS_TEAM_ID }}
+          IDENT_SECRET: ${{ secrets.IOS_SIGNING_IDENTITY }}
           APP_ID: ${{ steps.app.outputs.app_id }}
         run: |
           set -e
@@ -164,6 +166,45 @@ jobs:
           cp "$PROFIL" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
           rm -f "$ZERT" "$PROFIL"
           echo "Profil installiert: $NAME ($UUID)"
+
+          # Signier-Identität aus dem Schlüsselbund lesen statt aus einem Secret:
+          # Ein Tippfehler im Namen (Umlaut, Leerzeichen, Team-ID) führt sonst erst
+          # im Archivlauf zu "No certificate for team … matching … found".
+          IDS=$(security find-identity -v -p codesigning "$BUND")
+          echo "$IDS"
+          ZEILE=$(printf '%s\n' "$IDS" | grep -E '"(Apple|iPhone) Distribution' | head -1 || true)
+          [ -n "$ZEILE" ] || { echo "::error::Die .p12 enthält kein Distribution-Zertifikat (nur Development?). Bitte das Zertifikat 'Apple Distribution' aus der Schlüsselbundverwaltung bzw. von developer.apple.com als .p12 exportieren."; exit 1; }
+          IDENT=$(printf '%s' "$ZEILE" | sed -E 's/^[^"]*"(.*)"$/\1/')
+          HASH=$(printf '%s' "$ZEILE" | awk '{print $2}')
+          ZERT_TEAM=$(printf '%s' "$IDENT" | sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p')
+          PROFIL_TEAM=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin <<< "$INFO")
+          echo "Identität: $IDENT  ·  Team laut Zertifikat: $ZERT_TEAM  ·  Team laut Profil: $PROFIL_TEAM"
+          [ "$ZERT_TEAM" = "$PROFIL_TEAM" ] || { echo "::error::Zertifikat (Team $ZERT_TEAM) und Profil (Team $PROFIL_TEAM) gehören zu verschiedenen Teams."; exit 1; }
+
+          # Enthält das Profil genau dieses Zertifikat? Sonst neues Profil mit diesem Zertifikat erzeugen.
+          printf '%s' "$INFO" > "$RUNNER_TEMP/profil.plist"
+          python3 - "$RUNNER_TEMP/profil.plist" "$HASH" <<'PY'
+          import hashlib, plistlib, sys
+          daten = plistlib.load(open(sys.argv[1], "rb"))
+          drin = [hashlib.sha1(c).hexdigest().upper() for c in daten.get("DeveloperCertificates", [])]
+          if sys.argv[2].upper() not in drin:
+              print("::error::Das Profil wurde mit einem anderen Zertifikat erstellt als dem in der .p12. "
+                    "In developer.apple.com das Profil bearbeiten, das Distribution-Zertifikat aus der .p12 "
+                    "auswählen, neu herunterladen und IOS_PROVISIONING_PROFILE ersetzen.")
+              sys.exit(1)
+          print("Profil enthält das Zertifikat aus der .p12.")
+          PY
+          rm -f "$RUNNER_TEMP/profil.plist"
+
+          if [ -n "$TEAM_SECRET" ] && [ "$TEAM_SECRET" != "$PROFIL_TEAM" ]; then
+            echo "::warning::Das Secret IOS_TEAM_ID weicht von der Team-ID im Profil ab. Verwendet wird die aus dem Profil."
+          fi
+          if [ -n "$IDENT_SECRET" ] && [ "$IDENT_SECRET" != "$IDENT" ]; then
+            echo "::warning::Das Secret IOS_SIGNING_IDENTITY passt nicht zum Zertifikat in der .p12 (vermutlich die Ursache des ersten Fehlschlags). Verwendet wird die Identität aus der .p12."
+          fi
+
+          echo "identitaet=$IDENT"      >> "$GITHUB_OUTPUT"
+          echo "team=$PROFIL_TEAM"      >> "$GITHUB_OUTPUT"
           echo "profil_uuid=$UUID" >> "$GITHUB_OUTPUT"
           echo "profil_name=$NAME" >> "$GITHUB_OUTPUT"
           echo "vorhanden=true"    >> "$GITHUB_OUTPUT"
@@ -171,8 +212,8 @@ jobs:
       - name: Archivieren und IPA exportieren
         if: steps.signieren.outputs.vorhanden == 'true'
         env:
-          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-          IDENTITAET: ${{ secrets.IOS_SIGNING_IDENTITY }}
+          TEAM_ID: ${{ steps.signieren.outputs.team }}
+          IDENTITAET: ${{ steps.signieren.outputs.identitaet }}
           PROFIL_NAME: ${{ steps.signieren.outputs.profil_name }}
           PROFIL_UUID: ${{ steps.signieren.outputs.profil_uuid }}
           APP_ID: ${{ steps.app.outputs.app_id }}
@@ -182,9 +223,16 @@ jobs:
           set -e
           PROJEKT=ios/App/App.xcodeproj ruby tools/ios-projekt.rb
           cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
-            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            archive | tail -30
+          # Fehlerzeilen zusätzlich als Annotation ausgeben: die stehen dann direkt
+          # in der Zusammenfassung des Laufs, ohne das Log aufzuklappen.
+          LOG="$RUNNER_TEMP/archiv.log"
+          if ! xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+               -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+               archive > "$LOG" 2>&1; then
+            grep -E "error:|\*\* ARCHIVE FAILED" "$LOG" | sort -u | head -10 | while IFS= read -r z; do echo "::error title=Archivieren::$z"; done
+            tail -60 "$LOG"; exit 1
+          fi
+          tail -15 "$LOG"
 
           cat > "$RUNNER_TEMP/export.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
