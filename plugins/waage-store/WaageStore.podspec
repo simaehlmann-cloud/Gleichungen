@@ -9,8 +9,11 @@ Pod::Spec.new do |s|
   s.author           = 'Simon Mählmann'
   s.source           = { :git => 'https://github.com/simaehlmann-cloud/Gleichungen.git', :tag => s.version.to_s }
   s.source_files     = 'ios/Plugin/**/*.{swift,h,m}'
-  # Wie die App (der Workflow stellt sie auf iOS 15 um); StoreKit 2 braucht 15.
-  s.ios.deployment_target = '15.0'
+  # Bewusst 14.0, obwohl die App auf 15 läuft: "cap add ios" führt pod install
+  # schon mit dem Podfile des Templates (iOS 14) aus, bevor der Workflow es auf
+  # 15 umstellen kann. Mit 15.0 hier bricht genau dieser erste Lauf ab.
+  # Der Swift-Code prüft iOS 15 zur Laufzeit (#available), übersetzt also auch so.
+  s.ios.deployment_target = '14.0'
   s.dependency 'Capacitor'
   s.frameworks       = 'StoreKit'
   s.swift_version    = '5.1'
