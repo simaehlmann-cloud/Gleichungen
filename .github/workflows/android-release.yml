@@ -23,7 +23,14 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
+      # Wie bei FairSeat: v4 und "packages" ausdrücklich setzen. Der Standard
+      # "tools platform-tools" bricht ab, weil Google das veraltete Paket
+      # "tools" seit dem 15.09.2026 nicht mehr ausliefert
+      # (android-actions/setup-android#537). Plattform und Build-Tools lädt
+      # Gradle beim Bauen selbst nach.
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - run: npm ci
       - run: npm run build
