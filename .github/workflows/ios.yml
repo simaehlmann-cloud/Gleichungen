@@ -1,0 +1,240 @@
+name: iOS (TestFlight)
+
+# Nach dem Vorbild von FairSeat, angepasst an Capacitor statt Cordova.
+#
+# Nur von Hand (Actions → iOS (TestFlight) → Run workflow): macOS-Läufer
+# kosten je Minute das Zehnfache, und jeder Upload belegt dauerhaft eine
+# Build-Nummer. Wie beim Android-APK läuft also nichts automatisch bei jedem Push.
+on:
+  workflow_dispatch:
+    inputs:
+      hochladen:
+        description: "Nach App Store Connect / TestFlight hochladen"
+        type: boolean
+        default: true
+
+# Ausdrücklich bash: nur dann setzt GitHub "-o pipefail". Ohne das würde ein
+# fehlschlagendes "xcodebuild … | tail" als Erfolg durchgehen.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Die Prüfkette läuft auf Linux – ein Tippfehler soll nicht auf dem teuren
+  # Läufer auffallen.
+  pruefungen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Tests
+        run: |
+          npm ci
+          npm test
+
+  build:
+    needs: pruefungen
+    # Festgepinnt wie bei FairSeat: "macos-latest" wandert ohne Vorwarnung
+    # auf eine neue Xcode-Fassung.
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # Apple nimmt Uploads nur mit einem hinreichend neuen SDK an. Diese Zeile
+      # ist der Ort, an dem das jährlich nachgezogen wird.
+      - name: Xcode auswählen
+        run: |
+          set -e
+          APP=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$APP" ] || { echo "::error::Kein Xcode 26 auf diesem Läufer gefunden."; exit 1; }
+          sudo xcode-select -switch "$APP"
+          xcodebuild -version
+
+      - name: Kennung und Version lesen
+        id: app
+        run: |
+          set -e
+          APP_ID=$(node -p "require('./capacitor.config.json').appId")
+          APP_NAME=$(node -p "require('./capacitor.config.json').appName")
+          VERSION=$(node -p "require('./package.json').version")
+          # Jeder Lauf bekommt eine eigene, steigende Build-Nummer.
+          # App Store Connect lehnt einen zweiten Upload mit gleicher Nummer ab.
+          BUILD="${GITHUB_RUN_NUMBER}"
+          echo "app_id=$APP_ID"   >> "$GITHUB_OUTPUT"
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD"     >> "$GITHUB_OUTPUT"
+          echo "### $APP_NAME $VERSION ($BUILD) · $APP_ID" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Web-App bauen und iOS-Projekt erzeugen
+        run: |
+          set -e
+          npm ci
+          npm run build
+          npx cap add ios
+          npx cap sync ios
+
+      - name: Icon, Startbild, Info.plist und Manifest einsetzen
+        env:
+          APP_NAME: ${{ steps.app.outputs.app_name }}
+        run: |
+          set -e
+          ASSETS=ios/App/App/Assets.xcassets
+          cp res/ios/icon-1024.png "$ASSETS/AppIcon.appiconset/AppIcon-512@2x.png"
+          for f in splash-2732x2732.png splash-2732x2732-1.png splash-2732x2732-2.png; do
+            cp res/ios/splash-2732.png "$ASSETS/Splash.imageset/$f"
+          done
+
+          PLIST=ios/App/App/Info.plist
+          setze() { /usr/libexec/PlistBuddy -c "Set :$1 $2" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$1 $3 $2" "$PLIST"; }
+          setze CFBundleDisplayName "$APP_NAME" string
+          # Keine eigene Verschlüsselung – sonst fragt App Store Connect bei jedem Upload nach.
+          setze ITSAppUsesNonExemptEncryption false bool
+          # Das Template verlangt noch armv7; alle unterstützten Geräte sind arm64.
+          /usr/libexec/PlistBuddy -c "Set :UIRequiredDeviceCapabilities:0 arm64" "$PLIST"
+
+          cp res/ios/PrivacyInfo.xcprivacy ios/App/App/PrivacyInfo.xcprivacy
+
+      # Ohne Zertifikat läuft trotzdem ein Build – er beweist, dass das
+      # Projekt übersetzt. Hochladen lässt er sich nicht.
+      - name: Unsigniert bauen (Kompilierbarkeit nachweisen)
+        env:
+          VERSION: ${{ steps.app.outputs.version }}
+          BUILD: ${{ steps.app.outputs.build }}
+        run: |
+          set -e
+          gem list -i xcodeproj >/dev/null || sudo gem install xcodeproj --no-document
+          PROJEKT=ios/App/App.xcodeproj PRIVACY=ios/App/App/PrivacyInfo.xcprivacy ruby tools/ios-projekt.rb
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -20
+
+      # ---- Signierter Build für den App Store ----
+      # Dieselben Secrets wie bei FairSeat; neu ist nur das Profil für diese App:
+      #   IOS_CERTIFICATE_P12_BASE64, IOS_CERTIFICATE_PASSWORD   (von FairSeat)
+      #   IOS_TEAM_ID, IOS_SIGNING_IDENTITY                     (von FairSeat)
+      #   IOS_PROVISIONING_PROFILE                              (NEU: App-Store-Profil der Waagemodell-App-ID, base64)
+      - name: Signierschlüssel einrichten
+        id: signieren
+        env:
+          ZERT_B64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          ZERT_PW: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROFIL_B64: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          APP_ID: ${{ steps.app.outputs.app_id }}
+        run: |
+          set -e
+          if [ -z "$ZERT_B64" ] || [ -z "$PROFIL_B64" ]; then
+            echo "vorhanden=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Kein Zertifikat oder Profil hinterlegt – signierter Build wird übersprungen."
+            exit 0
+          fi
+          saeubern() { printf '%s' "$1" | sed '1s/^\xEF\xBB\xBF//' | tr -d ' \t\r\n' | base64 -d; }
+          ZERT="$RUNNER_TEMP/dist.p12"; PROFIL="$RUNNER_TEMP/profil.mobileprovision"
+          saeubern "$ZERT_B64" > "$ZERT"; saeubern "$PROFIL_B64" > "$PROFIL"
+          [ -s "$ZERT" ]   || { echo "::error::Das Zertifikat ließ sich nicht dekodieren."; exit 1; }
+          [ -s "$PROFIL" ] || { echo "::error::Das Profil ließ sich nicht dekodieren."; exit 1; }
+
+          BUND="$RUNNER_TEMP/signieren.keychain-db"; BUND_PW=$(uuidgen)
+          security create-keychain -p "$BUND_PW" "$BUND"
+          security set-keychain-settings -lut 21600 "$BUND"
+          security unlock-keychain -p "$BUND_PW" "$BUND"
+          security import "$ZERT" -P "$ZERT_PW" -A -t cert -f pkcs12 -k "$BUND"
+          security set-key-partition-list -S apple-tool:,apple: -k "$BUND_PW" "$BUND" > /dev/null
+          security list-keychain -d user -s "$BUND" login.keychain-db
+
+          INFO=$(security cms -D -i "$PROFIL")
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< "$INFO")
+          NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin <<< "$INFO")
+          PROFIL_APP=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin <<< "$INFO")
+          # Das Profil muss zur App-ID passen, sonst scheitert erst der Archivlauf mit einer unklaren Meldung.
+          case "$PROFIL_APP" in
+            *".$APP_ID") ;;
+            *) echo "::error::Das Profil gilt für '$PROFIL_APP', die App heißt '$APP_ID'. Neues Profil für diese App-ID anlegen."; exit 1 ;;
+          esac
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFIL" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          rm -f "$ZERT" "$PROFIL"
+          echo "Profil installiert: $NAME ($UUID)"
+          echo "profil_uuid=$UUID" >> "$GITHUB_OUTPUT"
+          echo "profil_name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "vorhanden=true"    >> "$GITHUB_OUTPUT"
+
+      - name: Archivieren und IPA exportieren
+        if: steps.signieren.outputs.vorhanden == 'true'
+        env:
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          IDENTITAET: ${{ secrets.IOS_SIGNING_IDENTITY }}
+          PROFIL_NAME: ${{ steps.signieren.outputs.profil_name }}
+          PROFIL_UUID: ${{ steps.signieren.outputs.profil_uuid }}
+          APP_ID: ${{ steps.app.outputs.app_id }}
+          VERSION: ${{ steps.app.outputs.version }}
+          BUILD: ${{ steps.app.outputs.build }}
+        run: |
+          set -e
+          PROJEKT=ios/App/App.xcodeproj ruby tools/ios-projekt.rb
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            archive | tail -30
+
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>provisioningProfiles</key><dict><key>$APP_ID</key><string>$PROFIL_UUID</string></dict>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/ipa"
+          ls -la "$RUNNER_TEMP/ipa"
+
+      - name: IPA als Artefakt sichern
+        if: steps.signieren.outputs.vorhanden == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: waagemodell-ios-ipa
+          path: ${{ runner.temp }}/ipa/*.ipa
+          if-no-files-found: error
+
+      # ---- Upload nach App Store Connect / TestFlight ----
+      # ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 – derselbe API-Schlüssel wie bei FairSeat.
+      - name: Nach App Store Connect hochladen
+        if: steps.signieren.outputs.vorhanden == 'true' && inputs.hochladen
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -e
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ]; then
+            echo "::notice::Keine App-Store-Connect-Schlüssel hinterlegt – die IPA liegt als Artefakt bereit."
+            exit 0
+          fi
+          # altool sucht den Schlüssel genau an diesem Pfad, unter genau diesem Namen.
+          mkdir -p "$HOME/private_keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          IPA=$(ls "$RUNNER_TEMP"/ipa/*.ipa | head -1)
+          # Erst prüfen, dann senden: der Prüflauf findet Plist- und Icon-Fehler,
+          # bevor eine Build-Nummer verbraucht ist.
+          xcrun altool --validate-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          xcrun altool --upload-app   -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          rm -f "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "Hochgeladen. Nach 5–30 Minuten Verarbeitung erscheint der Build in TestFlight." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Schlüsselbund entfernen
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signieren.keychain-db" 2>/dev/null || true
