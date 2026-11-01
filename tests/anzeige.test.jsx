@@ -8,11 +8,10 @@ import * as AppModul from "../src/WaagemodellApp.jsx";
 export default function (t) {
   const { fehler } = makeDom();
   const root = createRoot(document.getElementById("root"));
-  const { txt, knopf, klick, tippe, eingabefeld } = tools(act);
+  const { txt, knopf, klick, tippe, eingabefeld, baue } = tools(act);
   act(() => root.render(React.createElement(AppModul.default)));
 
-  tippe(eingabefeld(), "3x + 4 = x + 10");
-  klick(knopf("Waage bauen"));
+  baue("3x + 4 = x + 10");
 
   // Anzahl-Feld
   const anzahl = () => document.querySelector("input[type=number]");

@@ -8,12 +8,11 @@ import * as AppModul from "../src/WaagemodellApp.jsx";
 export default function (t) {
   const { fehler } = makeDom();
   const root = createRoot(document.getElementById("root"));
-  const { txt, knopf, klick, tippe, eingabefeld } = tools(act);
+  const { txt, knopf, klick, tippe, eingabefeld, baue } = tools(act);
   act(() => root.render(React.createElement(AppModul.default)));
   const pfeil = (k) => act(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: k, bubbles: true })));
 
-  tippe(eingabefeld(), "3x + 2 = x + 8");
-  klick(knopf("Waage bauen"));
+  baue("3x + 2 = x + 8");
   klick(knopf("− Kugel"));
   t("Umformung angewandt", txt().includes("3x + 1 = x + 7"));
   klick(knopf("zurück"));

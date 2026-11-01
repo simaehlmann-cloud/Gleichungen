@@ -8,12 +8,11 @@ import * as AppModul from "../src/WaagemodellApp.jsx";
 export default function (t) {
   const { fehler } = makeDom();
   let root = createRoot(document.getElementById("root"));
-  const { txt, knopf, klick, tippe, eingabefeld } = tools(act);
+  const { txt, knopf, klick, tippe, eingabefeld, baue } = tools(act);
   act(() => root.render(React.createElement(AppModul.default)));
 
-  t("Eingabe steht auf der Startseite", !!eingabefeld());
-  tippe(eingabefeld(), "3x + 2 = x + 8");
-  klick(knopf("Waage bauen"));
+  t("Startseite ohne Eingabefeld", !eingabefeld() && !!document.querySelector("#t-gl"));
+  baue("3x + 2 = x + 8");
   t("nach dem Bauen geht es zur Arbeitsfläche", !eingabefeld() && !!knopf("Start"));
   t("Umformungsleiste sichtbar", !!knopf("− Kugel"));
   t("Stil aus dem Speicher (Testrahmen: klassisch)", document.querySelector("[data-waage]").getAttribute("data-waage") === "klassisch");

@@ -9,12 +9,11 @@ export default function (t) {
   const { fehler } = makeDom();
   const App = AppModul.default;
   const root = createRoot(document.getElementById("root"));
-  const { txt, knopf, klick, tippe, eingabefeld } = tools(act);
+  const { txt, knopf, klick, tippe, eingabefeld, baue } = tools(act);
   act(() => root.render(React.createElement(App)));
 
   t("Start: Startseite mit beiden Wegen", txt().includes("Gleichungen") && txt().includes("Lineare Gleichungssysteme"));
-  tippe(eingabefeld(), "3x + 2 = x + 8");
-  klick(knopf("Waage bauen"));
+  baue("3x + 2 = x + 8");
   t("Eingabe erzeugt Blöcke", document.querySelectorAll('[data-drop="pan:1:L"] [data-piece="x"]').length === 3);
   t("Eingabe erzeugt Kugeln", document.querySelectorAll('[data-drop="pan:1:R"] [data-piece="k"]').length === 8);
   const winkel = () => {

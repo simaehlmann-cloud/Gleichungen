@@ -14,15 +14,27 @@ export default function (t) {
   t("Startseite: Gleichungen", !!document.querySelector("#t-gl"));
   t("Startseite: Gleichungssysteme", !!document.querySelector("#t-lgs"));
   t("Startseite: Einstellungen und Über", !!knopf("Einstellungen") && !!knopf("Über die App"));
+  t("Startseite: Datenschutz & Impressum", !!knopf("Datenschutz & Impressum"));
+  t("Startseite: kein Eingabefeld, keine Auswahllisten", !document.querySelector("input") && !document.querySelector("select"));
   t("Startseite: kein Weiterarbeiten ohne Stand", !knopf("Weiterarbeiten"));
   t("Startseite: Begrüßungswaage im Comic-Stil", document.querySelector("[data-waage]").getAttribute("data-waage") === "comic");
 
   klick(knopf("Über die App"));
   t("Über die App öffnet sich", txt().includes("sammelt keine Daten"));
+  t("Über die App erklärt die Verfahren", txt().includes("Einsetzungsverfahren") && txt().includes("Additionsverfahren"));
   klick(knopf("schließen"));
+  t("Über die App schließt sich", !txt().includes("Einsetzungsverfahren"));
 
-  klick(knopf("Neue Aufgabe"));
-  t("Neue Aufgabe führt zur Arbeitsfläche", !!knopf("Start") && !!knopf("− Kugel"));
+  klick(knopf("Datenschutz & Impressum"));
+  const rahmen = () => document.querySelector("iframe");
+  t("Datenschutzerklärung eingebettet", !!rahmen() && rahmen().getAttribute("src") === "./datenschutz.html");
+  klick(knopf("Impressum"));
+  t("Impressum eingebettet", rahmen().getAttribute("src") === "./impressum.html");
+  klick(knopf("schließen"));
+  t("Rechtliches schließt sich", !rahmen());
+
+  klick(document.querySelector("#t-gl"));
+  t("Block Gleichungen führt zur Arbeitsfläche", !!knopf("Start") && !!knopf("− Kugel"));
   t("Comic ist die Standardwaage", document.querySelector("[data-waage]").getAttribute("data-waage") === "comic");
   t("Rechenweg ist zuerst ausgeblendet", !txt().includes("Symbolische Ebene"));
   const reihenfolge = [...document.querySelectorAll("[data-waage], [data-drop='tray']")].map((e) => e.getAttribute("data-drop") || "waage");

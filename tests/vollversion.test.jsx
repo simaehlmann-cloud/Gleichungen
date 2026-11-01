@@ -18,7 +18,7 @@ export default async function (t) {
      deren späte Updates nicht hier als Konsolenfehler zählen, erst auslaufen lassen. */
   await new Promise((r) => setTimeout(r, 800));
   const { fehler } = makeDom();
-  const { txt, knopf, klick, tippe, eingabefeld } = tools(act);
+  const { txt, knopf, klick, tippe, eingabefeld, baue } = tools(act);
   const aufrufe = [];
   let besitz = false;
   window.__waageStore = {
@@ -33,8 +33,7 @@ export default async function (t) {
   await warte();
 
   t("Status wird beim Start abgefragt", aufrufe.includes("status"));
-  tippe(eingabefeld(), "3x + 2 = x + 8");
-  klick(knopf("Waage bauen"));
+  baue("3x + 2 = x + 8");
   t("kostenlos: Umformen geht", !!knopf("− Kugel"));
   klick(knopf("− Kugel"));
   t("kostenlos: Umformung wirkt", txt().includes("3x + 1 = x + 7"));

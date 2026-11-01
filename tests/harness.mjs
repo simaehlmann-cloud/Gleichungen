@@ -61,8 +61,13 @@ export function tools(act) {
     act(() => window.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, clientX: 300, clientY: 200 })));
     act(() => window.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true, clientX: 300, clientY: 200 })));
   };
-  /* Von der Startseite auf die leere Arbeitsfläche (eine bzw. zwei Waagen) */
-  const selbst = (lgs = false) => klick(alle("Selbst aufbauen")[lgs ? 1 : 0]);
   const eingabefeld = () => [...document.querySelectorAll("input")].find((i) => (i.value || "").includes("="));
-  return { txt, alle, knopf, klick, tippe, taste, ziehe, eingabefeld, selbst };
+  /* Von der Startseite über den Block „Gleichungen“ zur Arbeitsfläche,
+     dort den Bereich „Aufgabe“ öffnen (Stufe, Beispiel, Eingabe, leere Waage). */
+  const zurAufgabe = () => { klick(document.querySelector("#t-gl")); klick(knopf("Aufgabe")); };
+  /* … und dort eine leere Waage (eine bzw. zwei Waagen), danach „Aufgabe“ wieder zu */
+  const selbst = (lgs = false) => { zurAufgabe(); klick(knopf(lgs ? "Zwei Waagen" : "Eine Waage")); klick(knopf("Aufgabe")); };
+  /* … und dort eine Gleichung eintippen und bauen */
+  const baue = (gl) => { zurAufgabe(); tippe(eingabefeld(), gl); klick(knopf("Waage bauen")); };
+  return { txt, alle, knopf, klick, tippe, taste, ziehe, eingabefeld, selbst, zurAufgabe, baue };
 }

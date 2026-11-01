@@ -19,7 +19,7 @@ import { useVollversion, FUNKTIONEN } from "./lib/vollversion.js";
 import { A1, A2, LEVELS, genTask, genNeg } from "./lib/tasks.js";
 import { Piece } from "./components/Piece.jsx";
 import { Waage } from "./components/Waage.jsx";
-import { Startseite, Ueber } from "./components/Startseite.jsx";
+import { Startseite, Ueber, Rechtliches } from "./components/Startseite.jsx";
 
 /* ================= App ================= */
 export default function WaagemodellApp() {
@@ -826,11 +826,9 @@ ${logHTML}</body></html>`;
 
       <div style={{ maxWidth: presenting ? 1400 : 1120, margin: "0 auto" }}>
         {seite === "start" && !presenting && (
-          <Startseite ctx={ctx} stil={stilJetzt} voll={V.voll} kaufbar={V.kaufbar} level={level} setLevel={setLevel}
-            eq1={eq1} setEq1={setEq1} onBauen={buildFromInput}
-            onZufall={(l) => { if (l === 5 && !frei("lgs")) return; zufall(l); }}
-            onBeispiel={(m, i) => { if (m === "lgs" && !frei("lgs")) return; load(m, i); }}
-            onSelbst={(m) => { if (m === "lgs" && !frei("lgs")) return; leereWaage(m); }}
+          <Startseite ctx={ctx} stil={stilJetzt} voll={V.voll} kaufbar={V.kaufbar} level={level}
+            onGleichungen={() => zufall(level === 5 ? 1 : level)}
+            onLgs={() => { if (frei("lgs")) zufall(5); }}
             weiter={scales.some((sc) => !panEmpty(sc.L) || !panEmpty(sc.R))} onWeiter={() => { setSeite("arbeit"); setPanel(null); }}
             panel={panel} onPanel={umschalten} />
         )}
@@ -973,6 +971,7 @@ ${logHTML}</body></html>`;
         )}
 
         {panel === "ueber" && !presenting && <div style={{ marginBottom: 12 }}><Ueber onZu={() => setPanel(null)} /></div>}
+        {panel === "rechtliches" && !presenting && <div style={{ marginBottom: 12 }}><Rechtliches onZu={() => setPanel(null)} /></div>}
 
         {seite === "arbeit" && <>
         {/* Zone B: Phase – ersetzt Bestücken, zurück zum Aufbau und den Kopplungsschalter */}
