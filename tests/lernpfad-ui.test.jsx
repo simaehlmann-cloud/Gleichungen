@@ -59,6 +59,7 @@ export default async function (t) {
   klick(knopf("Los geht"));
 
   /* ---- Üben ---- */
+  t("Lernpfad-Aufgabe nicht in der Adresszeile", !window.location.search.includes("st="));
   t("Leiste erscheint", !!document.querySelector("section[aria-label='Lernpfad']") && !!feld("x"));
   t("eine Waage", document.querySelectorAll("[data-waage]").length === 1);
   t("Kopfleiste: Lernpfade statt Start, kein Aufgabe-Knopf", !!knopf("Lernpfade") && !knopf("Start") && !knopf("Aufgabe"));
@@ -92,6 +93,7 @@ export default async function (t) {
   klick(knopf("Übersicht"));
   t("Station 2 jetzt offen, 1 geschafft", !station("gl-2").disabled && station("gl-1").textContent.includes("geschafft"));
   klick(knopf("Start"));
+  t("nach dem Lernpfad kein Weiterarbeiten mit der Lernpfad-Aufgabe", !knopf("Weiterarbeiten"));
   klick(document.querySelector("#t-gl"));
   t("freies Arbeiten danach ohne Stationswerkzeuge", !document.querySelector("input[type='range']") && !document.querySelector("section[aria-label='Lernpfad']") && !!knopf("Aufgabe"));
 
@@ -179,9 +181,15 @@ export default async function (t) {
   t("LGS: zwei Waagen ohne Vollversion-Sperre", document.querySelectorAll("[data-waage]").length === 2);
   antworte();
   t("LGS: richtig, aber ohne Einsetzen zählt nicht", status().includes("Einsetzungsverfahren") && !knopf("Nächste Aufgabe"));
-  const ein = [...document.querySelectorAll("button")].filter((b) => /einsetzen$/.test(b.textContent.trim()));
-  ein.forEach((b) => klick(b));
-  t("LGS: Einsetzen erzeugt neue Waage", document.querySelectorAll("[data-waage]").length >= 3);
+  const einsetzen = () => [...document.querySelectorAll("button")].filter((b) => /einsetzen$/.test(b.textContent.trim()))
+    .forEach((b) => { if (document.querySelectorAll("[data-waage]").length === 2) klick(b); });
+  einsetzen();
+  t("LGS: Einsetzen erzeugt neue Waage", document.querySelectorAll("[data-waage]").length === 3);
+  klick(knopf("zurück"));
+  t("LGS: zurück nimmt das Einsetzen zurück", document.querySelectorAll("[data-waage]").length === 2);
+  klick(knopf("prüfen"));
+  t("LGS: zurückgenommenes Einsetzen zählt nicht", status().includes("Einsetzungsverfahren"));
+  einsetzen();
   klick(knopf("prüfen"));
   t("LGS: mit Einsetzen zählt", status().startsWith("Richtig") && JSON.parse(window.localStorage.getItem(SCHLUESSEL)).s["lgs-4"] === 1);
   klick(knopf("Nächste Aufgabe"));

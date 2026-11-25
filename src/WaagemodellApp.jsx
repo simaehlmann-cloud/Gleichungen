@@ -70,13 +70,11 @@ export default function WaagemodellApp() {
      zur Arbeitsfläche. "panel" ist der aufgeklappte Bereich unter der Kopfleiste. */
   const mitLink = typeof window !== "undefined" && /[?&](st|eq)=/.test(window.location.search);
   const [seite, setSeite] = useState(mitLink ? "arbeit" : "start");
-  /* Lernpfad: lp ist die laufende Aufgabe einer Station (null = freies Arbeiten).
-     verfahren merkt sich, welche LGS-Verfahren an der aktuellen Aufgabe benutzt wurden. */
+  /* Lernpfad: lp ist die laufende Aufgabe einer Station (null = freies Arbeiten). */
   const [lp, setLp] = useState(null);
   const [lpStand, setLpStand] = useState(Fortschritt.laden);
   const [lpAuswahl, setLpAuswahl] = useState(null);
   const [waageHilfe, setWaageHilfe] = useState(false);
-  const verfahren = useRef(new Set());
   const lpStation = lp ? STATIONEN[lp.stationId] : null;
   const waageVerdeckt = !!(lpStation && lpStation.waage === "aus" && !waageHilfe);
   const [stil, setStil] = useState(stilLaden);
@@ -456,7 +454,7 @@ export default function WaagemodellApp() {
         if (Number.isInteger(alt) && Math.abs(fVal(t.neu[k])) > alt && Math.abs(fVal(t.neu[k])) <= 14) eintritt[`${neu.id}:${side}:${k}`] = alt;
       });
     });
-    verfahren.current.add("einsetzen");
+    neu.via = "einsetzen";
     commit([...scales, neu], { t: `Jeder ${iso.v === "x" ? ctx.xName : ctx.yName} aus (${dst.label}) wurde durch den Inhalt der anderen Waagschale von (${src.label}) ersetzt – beides wiegt ja gleich viel.`, ok: true });
     setActiveId(neu.id);
     if (Object.keys(eintritt).length) {
@@ -471,7 +469,7 @@ export default function WaagemodellApp() {
     const ia = isolated(A), ib = isolated(B);
     if (!ia || !ib || ia.v !== ib.v) { warn("gleichsetzen"); return; }
     const neu = mkScale(`${A.label}=${B.label}`, ia.expr, ib.expr);
-    verfahren.current.add("gleichsetzen");
+    neu.via = "gleichsetzen";
     commit([...scales, neu], { t: `Beide Waagen tragen dasselbe – also wiegen auch die beiden anderen Waagschalen gleich viel.`, ok: true });
     setActiveId(neu.id);
   };
@@ -479,7 +477,7 @@ export default function WaagemodellApp() {
     if (offen) { setMsg({ t: meldung("erst-ausgleichen"), ok: false }); return; }
     const A = scales.find((s) => s.id === aId), B = scales.find((s) => s.id === bId), f = F(minus ? -1 : 1);
     const neu = mkScale(`${A.label}${minus ? "−" : "+"}${B.label}`, panAdd(A.L, panScale(B.L, f)), panAdd(A.R, panScale(B.R, f)));
-    verfahren.current.add("addieren");
+    neu.via = "addieren";
     commit([...scales, neu], { t: minus ? `Von jeder Waagschale von (${A.label}) wurde der Inhalt von (${B.label}) abgenommen.` : `Der Inhalt von (${B.label}) wurde auf die passenden Waagschalen von (${A.label}) geschüttet.`, ok: true });
     setActiveId(neu.id);
   };
@@ -487,7 +485,6 @@ export default function WaagemodellApp() {
   /* ---- Laden ---- */
   const setup = (list, m, ph = "umformen") => {
     resetUid();
-    verfahren.current = new Set();
     const ns = list.map((p, i) => mkScale(i === 0 ? "I" : "II", p.L, p.R));
     setPast([]); setScales(ns); setTask(ph === "umformen" ? list.map((p) => ({ L: p.L, R: p.R })) : []);
     setActiveId(1); setMode(m); setXv(1); setYv(1); setStage(null); setPending(null); setGuessX(""); setGuessY(""); setPhase(ph); setProbing(false); setZeigeLoesung(false);
@@ -591,7 +588,13 @@ export default function WaagemodellApp() {
   };
   /* Beim Verlassen die Stationswerkzeuge wieder abbauen, damit das freie Arbeiten wie gewohnt startet */
   const lpUebersicht = (auswahl = null) => {
-    if (lp) { setAnti(false); setProbieren(false); setProbing(false); setWaageHilfe(false); }
+    /* Die Lernpfad-Aufgabe nicht ins freie Arbeiten mitnehmen: dort gäbe es
+       „Lösung anzeigen“. Stattdessen eine leere Waage. */
+    if (lp) {
+      setup([{ L: P(), R: P() }], "einzeln", "bauen");
+      setMsg({ t: "Zieh Teile aus der Kiste auf die Schalen – jede Seite für sich. Die Gleichung entsteht mit.", ok: true });
+      setAnti(false); setProbieren(false); setProbing(false); setWaageHilfe(false);
+    }
     setLp(null); setLpAuswahl(auswahl); setSeite("lernpfade"); setPanel(null); setPresenting(false);
   };
   const lpVorstufe = (eingaben) => {
@@ -603,7 +606,10 @@ export default function WaagemodellApp() {
   };
   const lpPruefen = (antwort) => {
     if (!lp || lp.erledigt || lp.stufe !== "loesen") return;
-    const r = bewerte(lp.aufgabe, antwort, lpStation, verfahren.current);
+    /* Welche Verfahren benutzt wurden, steht an den Waagen selbst (via): Was mit
+       „zurück“ zurückgenommen oder geschlossen wurde, zählt damit auch nicht mehr. */
+    const benutzt = new Set(scales.map((sc) => sc.via).filter(Boolean));
+    const r = bewerte(lp.aufgabe, antwort, lpStation, benutzt);
     if (r.leer) { setLp({ ...lp, meldung: { t: r.text, ok: false } }); return; }
     if (!r.ok) {
       setLp({ ...lp, versucht: true, meldung: { t: r.text, ok: false } });
@@ -748,10 +754,12 @@ ${logHTML}</body></html>`;
     try {
       const q = new URLSearchParams(window.location.search);
       q.delete("eq"); q.delete("eq2"); q.delete("ctx");
-      q.set("st", codeState());
+      /* Lernpfad-Aufgaben nicht in die Adresszeile: ein Neuladen würde sie sonst
+         im freien Arbeiten mit „Lösung anzeigen“ wiederherstellen. */
+      if (lp) q.delete("st"); else q.set("st", codeState());
       window.history.replaceState(window.history.state || { waage: 1 }, "", `${window.location.pathname}?${q.toString()}`);
     } catch (e) { /* Adresszeile nicht änderbar */ }
-  }, [scales, phase, mode, ctxKey, task]);
+  }, [scales, phase, mode, ctxKey, task, lp]);
 
   /* ---- Aufgabe als Link ---- */
   const linkFor = () => {
