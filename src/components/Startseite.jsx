@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowRight, Lock, X } from "lucide-react";
+import { ArrowRight, Lock, Route, X } from "lucide-react";
 import { C, MONO, SERIF } from "../lib/tokens.js";
 import { P } from "../lib/fraction.js";
 import { LEVELS } from "../lib/tasks.js";
@@ -33,7 +33,7 @@ function Sinnbild({ lgs }) {
   );
 }
 
-function Startseite({ ctx, stil, voll, kaufbar, level, weiter, onWeiter, onGleichungen, onLgs, onPanel, panel }) {
+function Startseite({ ctx, stil, voll, kaufbar, level, weiter, onWeiter, onGleichungen, onLgs, onLernpfade, onPanel, panel }) {
   const stufe = LEVELS.find((l) => l.id === (level === 5 ? 1 : level)) || LEVELS[0];
   const fuss = [
     ["einstellungen", "Einstellungen"],
@@ -82,6 +82,16 @@ function Startseite({ ctx, stil, voll, kaufbar, level, weiter, onWeiter, onGleic
             <span className="start-block__los">
               {voll ? <>Los <ArrowRight {...ICON} /></> : <><Lock size={13} style={{ flexShrink: 0 }} /> Vollversion</>}
             </span>
+          </span>
+        </button>
+
+        <button id="t-lp" className="start-block start-block--lp" onClick={onLernpfade}
+          aria-label="Lernpfade – Schritt für Schritt selbstständig lernen">
+          <span className="start-block__titel">Lernpfade</span>
+          <span className="start-block__unter">Schritt für Schritt allein lernen – wie im Mathebuch</span>
+          <span className="start-block__fuss">
+            <Route size={40} strokeWidth={1.6} aria-hidden="true" style={{ flexShrink: 0 }} />
+            <span className="start-block__los">Los <ArrowRight {...ICON} /></span>
           </span>
         </button>
       </div>
@@ -156,6 +166,16 @@ function Ueber({ onZu }) {
         <li><strong>Additionsverfahren:</strong> Die Inhalte beider Waagen werden zusammengeschüttet. Weil links und rechts jeweils Gleiches hinzukommt, bleibt das Gleichgewicht erhalten.</li>
       </ul>
 
+      <h3 style={h3}>Lernpfade</h3>
+      <p style={absatz}>
+        Zwei Lernpfade führen Schritt für Schritt durch die Themen – in der Reihenfolge des Schulbuchs Parallelo:
+        vom Lösen durch Probieren über die Waage und Äquivalenzumformungen bis zu Klammern, Sonderfällen und Sachaufgaben,
+        bei den Gleichungssystemen vom Lösungspaar über Gleichsetzungs-, Einsetzungs- und Additionsverfahren bis zur
+        Sachaufgabe. Jede Station beginnt mit Merkkasten und Beispiel; nach drei richtig gelösten Aufgaben öffnet sich die
+        nächste. Tipps helfen weiter, die Lösung gibt es erst nach einem eigenen Versuch – dann zählt die Aufgabe aber nicht.
+        Jeder Pfad endet mit einem Abschlusstest. Der Fortschritt bleibt nur auf diesem Gerät.
+      </p>
+
       <h3 style={h3}>Erweiterungen unter Einstellungen</h3>
       <ul style={liste}>
         <li><strong>Rechenweg rechts:</strong> blendet alle bisherigen Äquivalenzumformungen neben der Waage ein.</li>
@@ -167,7 +187,8 @@ function Ueber({ onZu }) {
 
       <h3 style={h3}>Für Lehrkräfte</h3>
       <p style={absatz}>
-        Die Vollversion ergänzt, was im Unterricht am eigenen Gerät gebraucht wird: einen Präsentationsmodus für Beamer und
+        Die erste Station jedes Lernpfads ist kostenlos. Die Vollversion schaltet alle weiteren Stationen frei und ergänzt,
+        was im Unterricht am eigenen Gerät gebraucht wird: einen Präsentationsmodus für Beamer und
         digitale Tafel, zwei Waagen für Gleichungssysteme, Arbeitsblätter zum Ausdrucken (mit und ohne Lösung), eine Übersicht
         der Stolperstellen einer Sitzung, die Sachkontexte Marktstand und Streichhölzer sowie die realistische Laborwaage.
         Über „Link“ lässt sich eine Aufgabe genau so weitergeben, wie sie auf dem Bildschirm steht.

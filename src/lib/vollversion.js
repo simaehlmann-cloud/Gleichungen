@@ -13,6 +13,7 @@ const PRODUKT = "de.schule.waagemodell.vollversion";
 const SPEICHER = "waagemodell-voll";
 
 const FUNKTIONEN = {
+  lernpfade: "Jeder Lernpfad ab Station 2",
   praesentation: "Präsentationsmodus",
   lgs: "Zwei Waagen (Gleichungssysteme)",
   lehrkraft: "Arbeitsblätter und Stolperstellen",

@@ -20,6 +20,9 @@ import { A1, A2, LEVELS, genTask, genNeg } from "./lib/tasks.js";
 import { Piece } from "./components/Piece.jsx";
 import { Waage } from "./components/Waage.jsx";
 import { Startseite, Ueber, Rechtliches } from "./components/Startseite.jsx";
+import { LernpfadUebersicht, LernpfadLeiste } from "./components/Lernpfad.jsx";
+import { STATIONEN, bewerte, pruefeVorstufe, loesungsText } from "./lib/lernpfade.js";
+import * as Fortschritt from "./lib/fortschritt.js";
 
 /* ================= App ================= */
 export default function WaagemodellApp() {
@@ -67,6 +70,15 @@ export default function WaagemodellApp() {
      zur Arbeitsfläche. "panel" ist der aufgeklappte Bereich unter der Kopfleiste. */
   const mitLink = typeof window !== "undefined" && /[?&](st|eq)=/.test(window.location.search);
   const [seite, setSeite] = useState(mitLink ? "arbeit" : "start");
+  /* Lernpfad: lp ist die laufende Aufgabe einer Station (null = freies Arbeiten).
+     verfahren merkt sich, welche LGS-Verfahren an der aktuellen Aufgabe benutzt wurden. */
+  const [lp, setLp] = useState(null);
+  const [lpStand, setLpStand] = useState(Fortschritt.laden);
+  const [lpAuswahl, setLpAuswahl] = useState(null);
+  const [waageHilfe, setWaageHilfe] = useState(false);
+  const verfahren = useRef(new Set());
+  const lpStation = lp ? STATIONEN[lp.stationId] : null;
+  const waageVerdeckt = !!(lpStation && lpStation.waage === "aus" && !waageHilfe);
   const [stil, setStil] = useState(stilLaden);
   const [panel, setPanel] = useState(null);
   /* Rechte Spalte (Rechenweg) – anfangs aus, damit die Arbeitsfläche ruhig bleibt. */
@@ -112,8 +124,9 @@ export default function WaagemodellApp() {
   const landscape = vp.w >= vp.h;
   const twoUp = scales.length > 1;
   const bare = presenting && compact;
-  const zeigeWaage = !presenting || ansicht !== "protokoll";
-  const zeigeProt = presenting ? ansicht !== "waage" : rechts;
+  const rechtsJetzt = rechts || !!(lpStation && lpStation.rechts);
+  const zeigeWaage = (!presenting || ansicht !== "protokoll") && !waageVerdeckt;
+  const zeigeProt = presenting ? ansicht !== "waage" : rechtsJetzt;
   const offen = scales.some((sc) => sc.anker);
   const alleinstehend = presenting && ansicht !== "beides";
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -443,6 +456,7 @@ export default function WaagemodellApp() {
         if (Number.isInteger(alt) && Math.abs(fVal(t.neu[k])) > alt && Math.abs(fVal(t.neu[k])) <= 14) eintritt[`${neu.id}:${side}:${k}`] = alt;
       });
     });
+    verfahren.current.add("einsetzen");
     commit([...scales, neu], { t: `Jeder ${iso.v === "x" ? ctx.xName : ctx.yName} aus (${dst.label}) wurde durch den Inhalt der anderen Waagschale von (${src.label}) ersetzt – beides wiegt ja gleich viel.`, ok: true });
     setActiveId(neu.id);
     if (Object.keys(eintritt).length) {
@@ -457,6 +471,7 @@ export default function WaagemodellApp() {
     const ia = isolated(A), ib = isolated(B);
     if (!ia || !ib || ia.v !== ib.v) { warn("gleichsetzen"); return; }
     const neu = mkScale(`${A.label}=${B.label}`, ia.expr, ib.expr);
+    verfahren.current.add("gleichsetzen");
     commit([...scales, neu], { t: `Beide Waagen tragen dasselbe – also wiegen auch die beiden anderen Waagschalen gleich viel.`, ok: true });
     setActiveId(neu.id);
   };
@@ -464,6 +479,7 @@ export default function WaagemodellApp() {
     if (offen) { setMsg({ t: meldung("erst-ausgleichen"), ok: false }); return; }
     const A = scales.find((s) => s.id === aId), B = scales.find((s) => s.id === bId), f = F(minus ? -1 : 1);
     const neu = mkScale(`${A.label}${minus ? "−" : "+"}${B.label}`, panAdd(A.L, panScale(B.L, f)), panAdd(A.R, panScale(B.R, f)));
+    verfahren.current.add("addieren");
     commit([...scales, neu], { t: minus ? `Von jeder Waagschale von (${A.label}) wurde der Inhalt von (${B.label}) abgenommen.` : `Der Inhalt von (${B.label}) wurde auf die passenden Waagschalen von (${A.label}) geschüttet.`, ok: true });
     setActiveId(neu.id);
   };
@@ -471,6 +487,7 @@ export default function WaagemodellApp() {
   /* ---- Laden ---- */
   const setup = (list, m, ph = "umformen") => {
     resetUid();
+    verfahren.current = new Set();
     const ns = list.map((p, i) => mkScale(i === 0 ? "I" : "II", p.L, p.R));
     setPast([]); setScales(ns); setTask(ph === "umformen" ? list.map((p) => ({ L: p.L, R: p.R })) : []);
     setActiveId(1); setMode(m); setXv(1); setYv(1); setStage(null); setPending(null); setGuessX(""); setGuessY(""); setPhase(ph); setProbing(false); setZeigeLoesung(false);
@@ -548,6 +565,72 @@ export default function WaagemodellApp() {
     setPast([]); setScales(ns); setTask(pending.map((p) => ({ L: p.L, R: p.R }))); setActiveId(1); setPending(null); setStage(null); setPhase("umformen"); setPanel(null);
     setMsg({ t: "Die nötigen Umformungen stehen im Protokoll – danach liegt alles im positiven Bereich und passt auf die Waage.", ok: true });
   };
+
+  /* ---- Lernpfade ---- */
+  const lpFrei = (id) => STATIONEN[id].index === 0 || V.voll;
+  const lpLaden = (gl, st) => {
+    setup(gl.map((g) => ({ L: g.L, R: g.R })), gl.length === 2 ? "lgs" : "einzeln");
+    /* Probierstationen: die Waage wiegt sofort mit dem eingestellten Wert */
+    if (st && st.probieren) setProbing(true);
+    setMsg({ t: st && st.probieren ? "Bewege den Regler, bis die Waage waagerecht steht. Deine Lösung trägst du oben ein."
+      : st && st.waage === "aus" ? "Forme mit den Tasten um, bis x allein steht. Jede Umformung erscheint im Rechenweg. Deine Lösung trägst du oben ein."
+        : gl.length === 2 ? "Forme an den Waagen um. Deine Lösung trägst du oben ein." : "Forme an der Waage um, bis ein Block allein liegt. Deine Lösung trägst du oben ein.", ok: true });
+  };
+  const lpAufgabe = (id) => {
+    const st = STATIONEN[id];
+    if (!st || !Fortschritt.erreichbar(lpStand, id)) return;
+    if (!lpFrei(id)) { frei("lernpfade"); return; }
+    const a = st.gen();
+    if (a.vorstufe) { setSeite("arbeit"); setPanel(null); setPending(null); setStage(null); }
+    /* Jede Station bringt ihre eigenen Werkzeuge mit */
+    setAnti(!!st.anti); setKalkuel(false); setCoupled(false); setShowY(false); setProbieren(!!st.probieren);
+    setProbing(false); setCtxKey("algebra");
+    setWaageHilfe(false); setPresenting(false);
+    if (!a.vorstufe) lpLaden(a.gl, st);
+    setLp({ stationId: id, aufgabe: a, stufe: a.vorstufe ? "vor" : "loesen", tipp: 0, versucht: false, gezeigt: false, erledigt: false, meldung: null });
+  };
+  /* Beim Verlassen die Stationswerkzeuge wieder abbauen, damit das freie Arbeiten wie gewohnt startet */
+  const lpUebersicht = (auswahl = null) => {
+    if (lp) { setAnti(false); setProbieren(false); setProbing(false); setWaageHilfe(false); }
+    setLp(null); setLpAuswahl(auswahl); setSeite("lernpfade"); setPanel(null); setPresenting(false);
+  };
+  const lpVorstufe = (eingaben) => {
+    if (!lp || lp.stufe !== "vor") return;
+    const r = pruefeVorstufe(lp.aufgabe, eingaben);
+    if (!r.ok) { setLp({ ...lp, versucht: true, meldung: { t: r.text, ok: false } }); return; }
+    lpLaden(r.gl, lpStation);
+    setLp({ ...lp, aufgabe: { ...lp.aufgabe, gl: r.gl }, stufe: "loesen", versucht: false, meldung: { t: r.text, ok: true } });
+  };
+  const lpPruefen = (antwort) => {
+    if (!lp || lp.erledigt || lp.stufe !== "loesen") return;
+    const r = bewerte(lp.aufgabe, antwort, lpStation, verfahren.current);
+    if (r.leer) { setLp({ ...lp, meldung: { t: r.text, ok: false } }); return; }
+    if (!r.ok) {
+      setLp({ ...lp, versucht: true, meldung: { t: r.text, ok: false } });
+      if (!r.richtigOhneVerfahren) setLog((l) => [...l, { kind: "lernpfad", t: `${lpStation.titel}: ${r.text}`, when: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }), eq: lp.aufgabe.zeige.join(" / ") }]);
+      return;
+    }
+    if (lp.gezeigt) { setLp({ ...lp, erledigt: true, meldung: { t: `${r.text} Weil die Lösung angezeigt wurde, zählt diese Aufgabe nicht mit.`, ok: true } }); return; }
+    const id = lpStation.id, vorher = Fortschritt.geschafft(lpStand, id);
+    const neu = Fortschritt.richtigGeloest(lpStand, id);
+    setLpStand(neu);
+    const rest = lpStation.ziel - neu[id];
+    const zusatz = !vorher && Fortschritt.geschafft(neu, id)
+      ? (lpStation.test ? " Abschlusstest bestanden – du hast den ganzen Lernpfad geschafft!" : " Station geschafft! Die nächste Station ist jetzt frei.")
+      : rest > 0 ? ` Noch ${rest} richtig, dann ist die Station geschafft.` : "";
+    setLp({ ...lp, versucht: true, erledigt: true, meldung: { t: r.text + zusatz, ok: true } });
+  };
+  /* Lösung erst nach einem eigenen Versuch – sonst bricht die Selbstkontrolle */
+  const lpLoesung = () => {
+    if (!lp || !lp.versucht || lp.gezeigt) return;
+    if (lp.stufe === "vor") {
+      lpLaden(lp.aufgabe.gl, lpStation);
+      setLp({ ...lp, stufe: "loesen", gezeigt: true, versucht: false, meldung: { t: `So lautet die Gleichung: ${lp.aufgabe.gl.map((g) => eqOf(g.L, g.R)).join("  und  ")}. Diese Aufgabe zählt nicht mit – löse sie trotzdem zu Ende.`, ok: true } });
+      return;
+    }
+    setLp({ ...lp, gezeigt: true, erledigt: true, meldung: { t: `Lösung: ${loesungsText(lp.aufgabe)}. Diese Aufgabe zählt nicht mit. Vollzieh den Weg an der Waage nach und mach dann mit der nächsten Aufgabe weiter.`, ok: true } });
+  };
+  const lpZuruecksetzen = (pfadId) => setLpStand(Fortschritt.zuruecksetzen(pfadId));
 
   /* ---- Selbstkontrolle ---- */
   const pruefen = () => {
@@ -829,19 +912,24 @@ ${logHTML}</body></html>`;
           <Startseite ctx={ctx} stil={stilJetzt} voll={V.voll} kaufbar={V.kaufbar} level={level}
             onGleichungen={() => zufall(level === 5 ? 1 : level)}
             onLgs={() => { if (frei("lgs")) zufall(5); }}
+            onLernpfade={() => lpUebersicht()}
             weiter={scales.some((sc) => !panEmpty(sc.L) || !panEmpty(sc.R))} onWeiter={() => { setSeite("arbeit"); setPanel(null); }}
             panel={panel} onPanel={umschalten} />
         )}
 
         {/* Zone A: Kopfleiste – nur, was jede Stunde gebraucht wird */}
         {seite === "arbeit" && <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 10 }}>
-          {!presenting && <button style={btn()} onClick={() => { setSeite("start"); setPanel(null); }} title="Zur Startseite"><Home size={12} style={{ display: "inline" }} /> Start</button>}
-          {!presenting && <button style={chip(panel === "aufgabe")} aria-expanded={panel === "aufgabe"} onClick={() => umschalten("aufgabe")}>
+          {!presenting && (lp
+            ? <button style={btn()} onClick={() => lpUebersicht()} title="Zur Übersicht der Lernpfade"><Home size={12} style={{ display: "inline" }} /> Lernpfade</button>
+            : <button style={btn()} onClick={() => { setSeite("start"); setPanel(null); }} title="Zur Startseite"><Home size={12} style={{ display: "inline" }} /> Start</button>)}
+          {!presenting && !lp && <button style={chip(panel === "aufgabe")} aria-expanded={panel === "aufgabe"} onClick={() => umschalten("aufgabe")}>
             <ListChecks size={12} style={{ display: "inline" }} /> Aufgabe</button>}
+          {!(lp && lp.stufe === "vor") && <>
           <button style={btn({ opacity: past.length ? 1 : 0.45 })} onClick={undo} title="Strg+Z, in der Präsentation auch Pfeil links"><Undo2 size={12} style={{ display: "inline" }} /> zurück</button>
           <button style={btn({ opacity: future.length ? 1 : 0.45 })} onClick={redo} title="Pfeil rechts in der Präsentation"><Redo2 size={12} style={{ display: "inline" }} /> vor</button>
-          <button style={chip(presenting)} onClick={() => { if (!presenting && !frei("praesentation")) return; setPresenting(!presenting); }}>
-            {!V.voll && !presenting ? <Lock size={12} style={{ display: "inline" }} /> : <Presentation size={12} style={{ display: "inline" }} />} {presenting ? "Präsentation beenden" : "Präsentation"}</button>
+          </>}
+          {!lp && <button style={chip(presenting)} onClick={() => { if (!presenting && !frei("praesentation")) return; setPresenting(!presenting); }}>
+            {!V.voll && !presenting ? <Lock size={12} style={{ display: "inline" }} /> : <Presentation size={12} style={{ display: "inline" }} />} {presenting ? "Präsentation beenden" : "Präsentation"}</button>}
           {presenting && <button style={btn()} onClick={goFullscreen}><Maximize2 size={12} style={{ display: "inline" }} /> Vollbild</button>}
           {presenting && ["beides", "waage", "protokoll"].map((a) => (
             <button key={a} style={chip(ansicht === a)} onClick={() => setAnsicht(a)}
@@ -954,7 +1042,7 @@ ${logHTML}</body></html>`;
             {V.voll
               ? <p style={{ margin: "0 0 8px", fontSize: 14, color: C.ok }}>Die Vollversion ist freigeschaltet. Alle Funktionen stehen bereit.</p>
               : <>
-                <p style={{ margin: "0 0 6px", fontSize: 14 }}>Zum Üben ist alles kostenlos: Waage aufbauen, umformen, Aufgaben erzeugen, Lösung prüfen. Für den Unterricht schaltet die Vollversion frei:</p>
+                <p style={{ margin: "0 0 6px", fontSize: 14 }}>Zum Üben ist vieles kostenlos: Waage aufbauen, umformen, Aufgaben erzeugen, Lösung prüfen und die erste Station jedes Lernpfads. Die Vollversion schaltet frei:</p>
                 <ul style={{ margin: "0 0 10px", paddingLeft: 20, fontSize: 14, lineHeight: 1.6 }}>
                   {Object.values(FUNKTIONEN).map((f) => <li key={f}>{f}</li>)}
                 </ul>
@@ -973,9 +1061,21 @@ ${logHTML}</body></html>`;
         {panel === "ueber" && !presenting && <div style={{ marginBottom: 12 }}><Ueber onZu={() => setPanel(null)} /></div>}
         {panel === "rechtliches" && !presenting && <div style={{ marginBottom: 12 }}><Rechtliches onZu={() => setPanel(null)} /></div>}
 
-        {seite === "arbeit" && <>
+        {seite === "lernpfade" && !presenting && (
+          <LernpfadUebersicht stand={lpStand} voll={V.voll} auswahl={lpAuswahl} setAuswahl={setLpAuswahl}
+            onStart={lpAufgabe} onSperre={() => frei("lernpfade")} onStartseite={() => { setSeite("start"); setPanel(null); setLpAuswahl(null); }}
+            onZuruecksetzen={lpZuruecksetzen} />
+        )}
+
+        {seite === "arbeit" && lp && !presenting && (
+          <LernpfadLeiste key={lp.aufgabe.id} station={lpStation} lp={lp} stand={lpStand} waageHilfe={waageHilfe} onWaageHilfe={() => setWaageHilfe(!waageHilfe)}
+            onPruefen={lpPruefen} onVorstufe={lpVorstufe} onTipp={() => setLp({ ...lp, tipp: lp.tipp + 1 })} onLoesung={lpLoesung}
+            onNaechste={() => lpAufgabe(lp.stationId)} onWeiter={(id) => lpUebersicht(id)} onUebersicht={() => lpUebersicht()} />
+        )}
+
+        {seite === "arbeit" && !(lp && lp.stufe === "vor") && <>
         {/* Zone B: Phase – ersetzt Bestücken, zurück zum Aufbau und den Kopplungsschalter */}
-        {!bare && (
+        {!bare && !lp && (
           <div role="group" aria-label="Phase" style={{ display: "inline-flex", gap: 2, padding: 3, marginBottom: 12, background: "#fff", border: `1px solid ${C.grid}`, borderRadius: 999 }}>
             {[["bauen", "1 · Aufbauen"], ["umformen", "2 · Umformen"]].map(([ph, lbl]) => (
               <button key={ph} aria-pressed={phase === ph}
@@ -1114,7 +1214,7 @@ ${logHTML}</body></html>`;
 
             {/* Die Kiste: hier liegen die Teile. Herausziehen legt dazu, hineinlegen nimmt weg. */}
             <div data-drop="tray" style={{
-              ...kisteStil, marginTop: 10, display: bare ? "none" : "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+              ...kisteStil, marginTop: 10, display: bare || waageVerdeckt ? "none" : "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
               outline: hot === "tray" ? `3px dashed ${kisteStil.color}` : "none",
             }}>
               <span style={{ fontFamily: kisteStil.fontFamily, fontWeight: 800, fontSize: 15, letterSpacing: ".04em" }}>Kiste</span>
@@ -1135,7 +1235,7 @@ ${logHTML}</body></html>`;
               )}
             </div>
 
-            {rechts && active.prot.length > 1 && !bare && zeigeWaage && (
+            {rechtsJetzt && active.prot.length > 1 && !bare && zeigeWaage && (
               <div style={{ ...card, marginTop: 10 }}>
                 <div style={eyebrow}>Schritte — Waage ({active.label})</div>
                 <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
@@ -1244,8 +1344,8 @@ ${logHTML}</body></html>`;
               )}
             </div>}
 
-            <div style={{ ...card, marginTop: 10, display: phase === "bauen" || bare ? "none" : "block" }}>
-              <div style={eyebrow}>Lösung prüfen</div>
+            <div style={{ ...card, marginTop: 10, display: phase === "bauen" || bare || (lp && !probieren) ? "none" : "block" }}>
+              <div style={eyebrow}>{lp ? "Ausprobieren" : "Lösung prüfen"}</div>
               {probieren && <div style={{ fontSize: 12.5, color: C.ink2, marginBottom: 8 }}>
                 {probing
                   ? "Probiermodus: die Waage wiegt mit deinem eingestellten Wert. Stimmt er, steht sie waagerecht."
@@ -1258,7 +1358,7 @@ ${logHTML}</body></html>`;
                   <span style={{ fontFamily: MONO, fontSize: 13, width: 42, textAlign: "right" }}>{val}</span>
                 </div>
               ))}
-              <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
+              {!lp && <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
                 <span style={{ fontFamily: MONO, fontSize: 12 }}>meine Lösung {ctx.sym.x} =</span>
                 <input value={guessX} onChange={(e) => setGuessX(e.target.value)} style={{ width: 60, fontFamily: MONO, fontSize: 13, padding: "4px 6px", border: `1px solid ${C.ink2}`, borderRadius: 6 }} />
                 {hasY && <>
@@ -1269,8 +1369,8 @@ ${logHTML}</body></html>`;
                 <button style={btn()} onClick={() => { if (loesung.x) setXv(fVal(loesung.x)); if (loesung.y) setYv(fVal(loesung.y)); setProbing(true); setZeigeLoesung(true); }}><Eye size={11} style={{ display: "inline" }} /> zeigen</button>
                 <button style={chip(probieren)} onClick={() => { if (probieren) setProbing(false); setProbieren(!probieren); }} title="Gewicht der Blöcke mit einem Regler einstellen">Ausprobieren</button>
                 {gefunden && <span style={{ fontFamily: MONO, fontSize: 12, color: C.ok }}>alle Waagen waagerecht</span>}
-              </div>
-              {!zeigeProt && zeigeLoesung && (
+              </div>}
+              {!lp && !zeigeProt && zeigeLoesung && (
                 <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 13 }}>
                   Lösung: <strong>{loesung.text}</strong>
                   {probe && loesung.x && probe.map((pr) => <div key={pr.i} style={{ fontSize: 12, color: C.ink2 }}>Probe {pr.eq}: {pr.l} = {pr.r} {pr.ok ? "✓" : "✗"}</div>)}
@@ -1330,7 +1430,7 @@ ${logHTML}</body></html>`;
                   })()}
                 </div>
               ))}
-              {phase === "bauen"
+              {lp ? null : phase === "bauen"
                 ? <div style={{ borderTop: `1px solid ${C.grid}`, paddingTop: 8, fontSize: 13 }}>
                   Sobald die Gleichung stimmt, auf „2 · Umformen“ tippen. Danach steht jede Äquivalenzumformung hier als eigene Zeile.
                 </div>
@@ -1342,7 +1442,7 @@ ${logHTML}</body></html>`;
                   : <div style={{ borderTop: `1px solid ${C.grid}`, paddingTop: 8 }}>
                     <button style={btn()} onClick={() => setZeigeLoesung(true)}><Eye size={11} style={{ display: "inline" }} /> Lösung anzeigen</button>
                   </div>}
-              {phase === "umformen" && zeigeLoesung && probe && loesung.x && probe.map((p) => (
+              {!lp && phase === "umformen" && zeigeLoesung && probe && loesung.x && probe.map((p) => (
                 <div key={p.i} style={{ fontFamily: MONO, fontSize: 12 * zP, color: C.ink2 }}>Probe {p.eq}: {p.l} = {p.r} {p.ok ? "✓" : "✗"}</div>
               ))}
             </div>

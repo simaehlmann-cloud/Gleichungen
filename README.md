@@ -31,6 +31,17 @@ die symbolische Äquivalenzumformung mitgeschrieben wird.
 - Kalkülmodus für den Übergang, wenn das Waagemodell an seine Grenze kommt
 - Sachsituation: aus der Gleichung wird ein Aufgabentext im gewählten Kontext
 - Schritte zurück und wieder vor; in der Präsentation über Pfeil links und rechts
+- **Lernpfade zum selbstständigen Lernen** in der Progression von Parallelo (Cornelsen, Niedersachsen):
+  - *Gleichungen lösen* (11 Stationen): Probieren → wegnehmen → teilen → zwei Schritte → x auf beiden
+    Seiten → ohne Waage → Klammern → Brüche und negative Zahlen → Sonderfälle → Sachaufgaben → Abschlusstest
+  - *Lineare Gleichungssysteme* (9 Stationen): Lösungspaare → Was ist ein LGS? → Gleichsetzungs-,
+    Einsetzungs-, Additionsverfahren → Verfahrenswahl → Sonderfälle → Sachaufgaben → Abschlusstest
+  - jede Station: Merkkasten mit Beispiel, Zufallsaufgaben, gestufte Tipps, drei richtige Lösungen öffnen
+    die nächste Station; die Lösung gibt es erst nach einem eigenen Versuch, dann zählt die Aufgabe nicht
+  - Vorstufen: Klammer erst auflösen bzw. bei Sachaufgaben die Gleichung selbst aufstellen (wird geprüft)
+  - Verfahrensstationen zählen nur, wenn das Verfahren an den Waagen tatsächlich benutzt wurde
+  - Hilfen werden zurückgenommen: Regler beim Probieren, später Rechenweg, in Station 6 Waage nur als Hilfe
+  - Lernstand nur lokal auf dem Gerät (`waagemodell-lernpfade`), je Pfad zurücksetzbar
 
 Die Waage wird beim Lösungswert ausgewertet: Solange die Gleichung gilt, steht sie
 waagerecht. Eine einseitige Veränderung kippt sie sichtbar.
@@ -152,8 +163,9 @@ npm run ios:open     # öffnet das Projekt in Xcode
 
 ## Vollversion (In-App-Kauf, nur iOS)
 
-Zum Üben ist alles kostenlos. Die Vollversion ist ein einmaliger Kauf
-(nicht verbrauchbar, Produkt-ID `de.schule.waagemodell.vollversion`) und schaltet frei:
+Zum Üben ist vieles kostenlos, dazu die erste Station jedes Lernpfads. Die Vollversion ist
+ein einmaliger Kauf (nicht verbrauchbar, Produkt-ID `de.schule.waagemodell.vollversion`,
+Preis 3,99 € – festgelegt in App Store Connect) und schaltet frei: alle Lernpfad-Stationen ab Station 2,
 Präsentationsmodus, zwei Waagen, Arbeitsblätter und Stolperstellen, die Sachkontexte
 Marktstand und Streichhölzer sowie die Waagen Comic und Realistisch.
 
@@ -173,8 +185,7 @@ npm test
 ```
 
 Der Rahmen kommt ohne Testframework aus: `tests/run.mjs` bündelt jede Datei
-`tests/*.test.jsx` mit esbuild und führt sie in jsdom aus. Neun Suiten mit
-92 Prüfungen decken ab:
+`tests/*.test.jsx` mit esbuild und führt sie in jsdom aus. Die Suiten decken ab:
 
 | Datei | Inhalt |
 |---|---|
@@ -187,6 +198,8 @@ Der Rahmen kommt ohne Testframework aus: `tests/run.mjs` bündelt jede Datei
 | `anzeige.test.jsx` | Anzahl-Feld, verborgene Lösung, Ansichten im Präsentationsmodus |
 | `rendering.test.jsx` | wacht über verirrte JSX-Klammern im gerenderten Text |
 | `umlegen.test.jsx` | Teile zwischen den Schalen umlegen, nur im Aufbau erlaubt |
+| `lernpfade.test.jsx` | Lernpfad-Daten, je Station 300 Zufallsaufgaben, Bewertung, Vorstufen, Lernstand |
+| `lernpfad-ui.test.jsx` | Lernpfade in der App: Übersicht, Üben, Freischalten, Klammer, Sachaufgabe, Verfahren, Kaufsperre |
 
 Der Workflow `.github/workflows/tests.yml` führt sie bei jedem Push und jedem
 Pull Request aus.
@@ -207,6 +220,9 @@ src/components/Piece.jsx       Kugeln, Blöcke, Zehnerbündel
 src/components/Waage.jsx       die Balkenwaage mit drei Gestellen
 src/lib/stile.js               Waagen-Stile: Geometrie, Farben, Ausschwingen
 src/lib/vollversion.js         Kaufstatus, Kaufen, Wiederherstellen
+src/lib/lernpfade.js           Lernpfade: Stationen, Generatoren, Bewertung (rein, ohne React)
+src/lib/fortschritt.js         Lernstand der Lernpfade im localStorage
+src/components/Lernpfad.jsx    Lernpfad-Übersicht, Einführung, Leiste über der Arbeitsfläche
 plugins/waage-store/           StoreKit-2-Plugin für Capacitor (iOS)
 src/index.css                  Grundlayout und die wenigen Utility-Klassen
 tests/                         Testrahmen und Suiten

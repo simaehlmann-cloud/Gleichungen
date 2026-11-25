@@ -53,6 +53,7 @@ input, select, textarea { font: inherit; color: inherit; background: #fff; }
   border-radius: 0 6px 6px 0; background: var(--farbe);
 }
 .start-block--lgs { --farbe: #6B4E8C; --dunkel: #4C3765; --hell: #ECE5F3; }
+.start-block--lp { --farbe: #3E7A56; --dunkel: #2A5A3E; --hell: #E2EFE6; }
 .start-block:hover { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(34,49,43,.06), 0 14px 30px -14px var(--dunkel); }
 .start-block:active { transform: scale(.985); }
 .start-block:focus-visible { outline: 3px solid var(--farbe); outline-offset: 3px; }
